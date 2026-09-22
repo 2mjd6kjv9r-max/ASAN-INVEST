@@ -78,7 +78,13 @@ public enum UserRole
 
 public enum UserStatus { ACTIVE, DISABLED }
 
-public enum AuthProvider { EMAIL, ASAN_LOGIN }
+public enum AuthProvider { EMAIL, ASAN_LOGIN, E_NONRESIDENT, FOREIGN_ESIGN }
+
+/// Remote bank channel (TZ §22.1). REMOTE_ESIGN stays PLAN until the Central Bank agreement exists.
+public enum BankChannel { PHYSICAL_SIGNATURE, REMOTE_ESIGN }
+
+/// E-rezidentlik. GRANTED only via back-office after legislation.
+public enum EResidencyStatus { NONE, APPLIED, PLAN_PENDING, GRANTED }
 
 public enum ProjectSizeCategory { SMALL, LARGE }
 

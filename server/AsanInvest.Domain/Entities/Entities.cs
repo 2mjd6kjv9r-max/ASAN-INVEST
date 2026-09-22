@@ -19,6 +19,11 @@ public class User
     public string? PepSanctionsStatus { get; set; }
     public DateTimeOffset? PepSanctionsCheckedAt { get; set; }
     public string? PepSanctionsListVersion { get; set; }
+    /// TZ §2: stored if issued; does not change resident / non-resident labelling.
+    public string? VirtualFin { get; set; }
+    public string? Fin { get; set; }
+    public string? EsignIssuer { get; set; }
+    public DateTimeOffset? IdentificationUpgradedAt { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
 
@@ -26,6 +31,7 @@ public class User
     public Profile? Profile { get; set; }
     public ICollection<UserRoleAssignment> RoleAssignments { get; set; } = new List<UserRoleAssignment>();
     public ICollection<PartnerSelection> PartnerSelections { get; set; } = new List<PartnerSelection>();
+    public ICollection<FlagChangeEvent> FlagChangeEvents { get; set; } = new List<FlagChangeEvent>();
 }
 
 public class UserRoleAssignment
@@ -56,6 +62,7 @@ public class Profile
     public string? DvxRegistrationStatus { get; set; }
     public DateTimeOffset? DvxRegisteredAt { get; set; }
     public string? CompanyLegalForm { get; set; }
+    public EResidencyStatus EResidencyStatus { get; set; } = EResidencyStatus.NONE;
     public string? UboStructure { get; set; }
     public int Version { get; set; } = 1;
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
@@ -165,6 +172,7 @@ public class Application
     public string? WithdrawalReason { get; set; }
     public DateTimeOffset? SubmittedAt { get; set; }
     public Guid? LinkedCaseId { get; set; }
+    public BankChannel? BankChannel { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
     public ApplicationType Type { get; set; } = null!;
@@ -356,6 +364,7 @@ public class Procedure
     public string? LegalBasis { get; set; }
     public string? EServiceUrl { get; set; }
     public Guid? ApplicationTypeId { get; set; }
+    public string? IntegrationCode { get; set; }
     public int SortOrder { get; set; }
     public bool IsActive { get; set; } = true;
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
@@ -363,6 +372,7 @@ public class Procedure
     public Classification Institution { get; set; } = null!;
     public ICollection<ProcedureDependency> Dependencies { get; set; } = new List<ProcedureDependency>();
     public ICollection<StateFee> StateFees { get; set; } = new List<StateFee>();
+    public ICollection<FlagChangeEvent> FlagChangeEvents { get; set; } = new List<FlagChangeEvent>();
 }
 
 public class ProcedureDependency
@@ -544,4 +554,18 @@ public class StateFee
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
     public Procedure? Procedure { get; set; }
     public ApplicationType? ApplicationType { get; set; }
+}
+
+/// FR-FLAG-03 — procedure flag promotion audit. Append-only.
+public class FlagChangeEvent
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid ProcedureId { get; set; }
+    public Flag FromFlag { get; set; }
+    public Flag ToFlag { get; set; }
+    public Guid? ActorUserId { get; set; }
+    public int NotifiedCount { get; set; }
+    public DateTimeOffset OccurredAt { get; set; } = DateTimeOffset.UtcNow;
+    public Procedure Procedure { get; set; } = null!;
+    public User? Actor { get; set; }
 }
