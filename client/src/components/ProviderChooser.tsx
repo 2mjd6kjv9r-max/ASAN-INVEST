@@ -96,10 +96,12 @@ export function ProviderChooser({ signedIn = false }: { signedIn?: boolean }) {
         setOutcome({ available: false, flag: 'PLANNED', message: t('phase3.notLive') })
       }
     } catch (err) {
+      const row = (providers.data ?? FALLBACK_PROVIDERS).find((p) => p.code === code)
       setOutcome({
         available: false,
         flag: 'PLANNED',
-        message: isApiError(err) ? err.message : t('common.error'),
+        message: row?.message || (isApiError(err) ? err.message : t('common.error')),
+        code: isApiError(err) ? err.code : 'INTEGRATION_UNAVAILABLE',
       })
     } finally {
       setPending(null)
