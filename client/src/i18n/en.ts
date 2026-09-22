@@ -147,7 +147,6 @@ export const en = {
     noAccount: 'No account?',
     haveAccount: 'Already registered?',
     forgot: 'Forgot password?',
-    demo: 'Local seed: sysadmin@asaninvest.local / ChangeMe_Sysadmin_123 (2FA for internal roles).',
   },
   phase3: {
     providersTitle: 'Sign-in methods',

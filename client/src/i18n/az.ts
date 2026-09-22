@@ -150,7 +150,6 @@ export const az: Messages = {
     noAccount: 'Hesabınız yoxdur?',
     haveAccount: 'Artıq qeydiyyatdan keçmisiniz?',
     forgot: 'Şifrəni unutmusunuz?',
-    demo: 'Yerli seed: sysadmin@asaninvest.local / ChangeMe_Sysadmin_123 (daxili rollar üçün 2FA).',
   },
   phase3: {
     providersTitle: 'Daxilolma üsulları',

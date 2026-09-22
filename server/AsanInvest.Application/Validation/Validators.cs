@@ -163,9 +163,12 @@ public sealed class PaymentCreateRequestValidator : AbstractValidator<PaymentCre
 {
     public PaymentCreateRequestValidator()
     {
-        RuleFor(x => x.Amount).NotEmpty().Matches(@"^\d+(\.\d{1,2})?$");
-        RuleFor(x => x.Currency).NotEmpty().Must(c => c is "AZN" or "USD" or "EUR");
         RuleFor(x => x.Kind).IsInEnum();
+        RuleFor(x => x.ApplicationId).NotEmpty()
+            .WithMessage("applicationId is required so the state fee can be taken from the catalogue");
+        RuleFor(x => x.Amount).Matches(@"^\d+(\.\d{1,2})?$").When(x => !string.IsNullOrWhiteSpace(x.Amount));
+        RuleFor(x => x.Currency).Must(c => c is "AZN" or "USD" or "EUR")
+            .When(x => !string.IsNullOrWhiteSpace(x.Currency));
     }
 }
 

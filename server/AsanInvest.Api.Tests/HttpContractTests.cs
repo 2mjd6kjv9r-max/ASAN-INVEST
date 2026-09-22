@@ -111,6 +111,22 @@ public sealed class HttpContractTests : IClassFixture<ApiFactory>
     }
 
     [Fact]
+    public async Task Foreign_esign_start_is_anonymous_plan_and_does_not_issue_a_session()
+    {
+        var res = await _client.PostAsJsonAsync("/api/v1/auth/foreign-esign/start", new { issuer = "unlisted" });
+        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+        var text = await res.Content.ReadAsStringAsync();
+        using var body = JsonDocument.Parse(text);
+        var data = body.RootElement.GetProperty("data");
+        Assert.False(data.GetProperty("available").GetBoolean());
+        Assert.Equal("PLANNED", data.GetProperty("flag").GetString());
+        Assert.Equal("BASIC", data.GetProperty("identificationLevel").GetString());
+        Assert.Equal("INTEGRATION_UNAVAILABLE", data.GetProperty("code").GetString());
+        Assert.False(data.TryGetProperty("accessToken", out _));
+        Assert.DoesNotContain("Set-Cookie", res.Headers.ToString(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task Integration_status_is_honest_plan()
     {
         var res = await _client.GetAsync("/api/v1/integrations/visa/status");
@@ -121,6 +137,7 @@ public sealed class HttpContractTests : IClassFixture<ApiFactory>
         Assert.False(data.GetProperty("available").GetBoolean());
         Assert.Equal("PLANNED", data.GetProperty("flag").GetString());
         Assert.False(data.GetProperty("enabled").GetBoolean());
+        // available stays false even when a feature flag is on (fail-closed honesty).
         Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync("/api/v1/integrations/not-a-real-api/status")).StatusCode);
         var alias = await _client.GetAsync("/api/v1/integrations/customs_incentive/status");
         Assert.Equal(HttpStatusCode.OK, alias.StatusCode);
@@ -353,6 +370,32 @@ public sealed class DomainRuleTests
         Assert.StartsWith("AB", masked);
         Assert.EndsWith("34", masked);
         Assert.DoesNotContain("CD12", masked);
+    }
+
+    [Fact]
+    public void Payment_integrity_ignores_client_amount_shape_and_bounds_payloads()
+    {
+        Assert.Null(PaymentIntegrity.NormalizeProviderRef(null));
+        Assert.Null(PaymentIntegrity.NormalizeProviderRef("   "));
+        Assert.Equal("ref-1", PaymentIntegrity.NormalizeProviderRef(" ref-1 "));
+        Assert.Equal(PaymentIntegrity.MaxProviderRefChars, PaymentIntegrity.NormalizeProviderRef(new string('a', 200))!.Length);
+
+        Assert.Null(PaymentIntegrity.SanitizePayload("  "));
+        using var ok = JsonDocument.Parse(PaymentIntegrity.SanitizePayload("""{"ok":true}""")!);
+        Assert.True(ok.RootElement.GetProperty("ok").GetBoolean());
+        using var truncated = JsonDocument.Parse(PaymentIntegrity.SanitizePayload(new string('x', PaymentIntegrity.MaxPayloadChars + 10))!);
+        Assert.True(truncated.RootElement.GetProperty("truncated").GetBoolean());
+        using var invalid = JsonDocument.Parse(PaymentIntegrity.SanitizePayload("not-json")!);
+        Assert.True(invalid.RootElement.GetProperty("invalid").GetBoolean());
+
+        var validator = new AsanInvest.Application.Validation.PaymentCreateRequestValidator();
+        var missingApp = validator.Validate(new PaymentCreateRequest(PaymentKind.STATE_FEE, null, null, "9999.00", "AZN"));
+        Assert.False(missingApp.IsValid);
+        Assert.Contains(missingApp.Errors, e => e.PropertyName == nameof(PaymentCreateRequest.ApplicationId));
+        var pricedFromCatalogue = validator.Validate(new PaymentCreateRequest(PaymentKind.STATE_FEE, Guid.NewGuid(), null));
+        Assert.True(pricedFromCatalogue.IsValid);
+        var hugeAmountIgnored = validator.Validate(new PaymentCreateRequest(PaymentKind.STATE_FEE, Guid.NewGuid(), null, "999999.00", "AZN"));
+        Assert.True(hugeAmountIgnored.IsValid);
     }
 
     [Fact]

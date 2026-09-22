@@ -46,7 +46,7 @@ PostgreSQL behaviour:
 
 `payments.status` is converted from free text (`'external'`) to `payment_status` with `USING` — the column is not dropped.
 
-`users.virtual_fin` (TZ §2) is unique when present and **does not** change resident / non-resident labelling. `users.fin` is unique when present (resident ASAN Login / SİMA).
+`users.virtual_fin` (TZ §2) is unique when **non-empty** and **does not** change resident / non-resident labelling. `users.fin` is unique when **non-empty** (resident ASAN Login / SİMA). Empty strings are rejected (`CHECK`) and excluded from the unique indexes.
 
 `electricity_connection` is seeded `PLANNED` with `integration_code = electricity`. It must not claim `ONLINE` until a live adapter exists.
 
@@ -65,7 +65,8 @@ Flag promotions write append-only `flag_change_events` (FR-FLAG-03).
 | TZ §21.1 | Triggers: `integration_messages` cannot be updated or deleted |
 | FR-ROUTE-01 | `NUMERIC(18,2)` money; `currency` enum AZN / USD / EUR |
 | TZ §20 | State-fee rows (`state_fees`, `payments.kind = STATE_FEE`) stay separate from partner prices |
-| TZ §2 | `users.virtual_fin` unique if present; not a residency flag |
+| TZ §2 | `users.virtual_fin` / `users.fin` unique when non-empty (filtered unique + CHECK); not a residency flag |
+| FR-PAY-01 | `payments.provider_ref` unique when non-empty; `raw_payload` size-capped |
 | FR-FLAG-03 | `flag_change_events` cannot be updated or deleted |
 
 `state_fees` is the FR-ADM-10 catalogue (in-app checkout). It is additive; `procedures.fee_amount` is unchanged.

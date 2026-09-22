@@ -73,7 +73,6 @@ export function LoginPage() {
       <p className="text-sm">
         <Link to="/forgot-password">{t('auth.forgot')}</Link>
       </p>
-      <p className="text-xs text-muted">{t('auth.demo')}</p>
     </div>
   )
 }

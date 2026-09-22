@@ -90,7 +90,7 @@ public sealed class Phase3Service
         if (Phase3Integrity.MayUpgradeENonresident(_settings.ENonresidentEnabled, outcome.Available, assertion, outcome.ProviderRef))
         {
             // Only a real adapter with a non-empty assertion and provider ref may issue a virtual FİN (TZ §7.2).
-            row.VirtualFin = outcome.ProviderRef;
+            row.VirtualFin = PaymentIntegrity.NormalizeProviderRef(outcome.ProviderRef);
             row.AuthProvider = AuthProvider.E_NONRESIDENT;
             if (row.IdentificationLevel != IdentificationLevel.LEGAL)
             {
@@ -114,8 +114,12 @@ public sealed class Phase3Service
     public async Task<object> StartForeignEsignAsync(string? issuer, CancellationToken ct)
     {
         var outcome = await _foreignEsign.StartAsync(issuer, ct);
-        LogIntegration("foreign_esign", "outbound", "auth", issuer ?? "unknown", outcome);
-        await _db.SaveChangesAsync(ct);
+        // Anonymous PLAN clicks must not fill integration_messages the way login/register do.
+        if (outcome.Available)
+        {
+            LogIntegration("foreign_esign", "outbound", "auth", issuer ?? "unknown", outcome);
+            await _db.SaveChangesAsync(ct);
+        }
         return new
         {
             flag = Flag.PLANNED,
@@ -132,6 +136,8 @@ public sealed class Phase3Service
         if (!IntegrationCodes.Contains(normalized))
             throw AppException.NotFound("Unknown integration code");
         var enabled = FlagEnabled(normalized);
+        // Fail-closed on purpose: flags may be on in a lab, but Available stays false until
+        // a live adapter spec exists in-repo. `enabled` reports the flag; `available` is honesty.
         return new
         {
             code = normalized,
@@ -394,8 +400,8 @@ public sealed class Phase3Service
             Direction = direction,
             ObjectType = objectType,
             ObjectId = objectId,
-            ProviderRef = outcome.ProviderRef,
-            Payload = string.IsNullOrWhiteSpace(outcome.RawPayload) ? "{}" : outcome.RawPayload,
+            ProviderRef = PaymentIntegrity.NormalizeProviderRef(outcome.ProviderRef),
+            Payload = PaymentIntegrity.SanitizePayload(outcome.RawPayload) ?? "{}",
             Status = outcome.Available ? "sent" : "unavailable",
         });
     }

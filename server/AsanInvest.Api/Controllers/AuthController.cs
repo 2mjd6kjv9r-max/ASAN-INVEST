@@ -121,6 +121,7 @@ public sealed class AuthController : ApiControllerBase
 
     [HttpPost("foreign-esign/start")]
     [AllowAnonymous]
+    [EnableRateLimiting("auth")]
     public async Task<IActionResult> ForeignEsignStart([FromServices] Phase3Service phase3, [FromBody] ForeignEsignStartRequest? body, CancellationToken ct) =>
         OkData(await phase3.StartForeignEsignAsync(body?.Issuer, ct));
 

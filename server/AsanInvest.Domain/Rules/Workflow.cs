@@ -275,3 +275,35 @@ public static class PaymentHmac
             && System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(expectedBytes, providedBytes);
     }
 }
+
+/// Provider refs, webhook bodies, and adapter logs must not be stored unbounded or as empty unique keys.
+public static class PaymentIntegrity
+{
+    public const int MaxPayloadChars = 4096;
+    public const int MaxRawBodyChars = 16384;
+    public const int MaxProviderRefChars = 128;
+
+    public static string? NormalizeProviderRef(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        var trimmed = value.Trim();
+        return trimmed.Length <= MaxProviderRefChars ? trimmed : trimmed[..MaxProviderRefChars];
+    }
+
+    public static string? SanitizePayload(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+        var trimmed = raw.Trim();
+        if (trimmed.Length > MaxPayloadChars)
+            return JsonSerializer.Serialize(new { truncated = true, length = trimmed.Length });
+        try
+        {
+            using var doc = JsonDocument.Parse(trimmed);
+            return doc.RootElement.GetRawText();
+        }
+        catch (JsonException)
+        {
+            return JsonSerializer.Serialize(new { invalid = true, length = trimmed.Length });
+        }
+    }
+}

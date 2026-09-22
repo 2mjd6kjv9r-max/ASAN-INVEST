@@ -753,28 +753,32 @@ public sealed class Phase2Service
     {
         if (body.Kind != PaymentKind.STATE_FEE)
             throw AppException.BadRequest("PAYMENT_KIND", "In-app checkout is for state fees only. Partner fees stay off-platform.");
-        var amount = decimal.Parse(body.Amount, CultureInfo.InvariantCulture);
-        var currency = Enum.Parse<Currency>(body.Currency);
-        var profile = await ProfileOf(user.Id, ct);
+        if (body.ApplicationId is not Guid aid)
+            throw AppException.BadRequest("APPLICATION_REQUIRED", "A state-fee payment must be priced from an application in the catalogue.");
+
+        var app = await _db.Applications.Include(a => a.Project).FirstOrDefaultAsync(a => a.Id == aid, ct)
+            ?? throw AppException.NotFound("Application not found");
+        if (!await OwnsApplicationAsync(user, app, ct)) throw AppException.Forbidden();
+
+        Guid? projectId = app.ProjectId ?? body.ProjectId;
         if (body.ProjectId is Guid pid)
         {
             var project = await _db.Projects.FirstOrDefaultAsync(p => p.Id == pid, ct) ?? throw AppException.NotFound("Project not found");
-            if (project.ProfileId != profile.Id) throw AppException.Forbidden();
+            if (project.ProfileId != (await ProfileOf(user.Id, ct)).Id) throw AppException.Forbidden();
+            if (app.ProjectId is Guid appProject && appProject != pid)
+                throw AppException.BadRequest("PROJECT_MISMATCH", "The project does not match this application.");
+            projectId = pid;
         }
-        if (body.ApplicationId is Guid aid)
-        {
-            var app = await _db.Applications.Include(a => a.Project).FirstOrDefaultAsync(a => a.Id == aid, ct)
-                ?? throw AppException.NotFound("Application not found");
-            if (!await OwnsApplicationAsync(user, app, ct)) throw AppException.Forbidden();
-        }
+
+        var (amount, currency) = await ResolveStateFeeAsync(app, ct);
 
         var payment = new Payment
         {
             Kind = PaymentKind.STATE_FEE,
             Amount = amount,
             Currency = currency,
-            ProjectId = body.ProjectId,
-            ApplicationId = body.ApplicationId,
+            ProjectId = projectId,
+            ApplicationId = aid,
             Status = _settings.PaymentsEnabled ? PaymentStatus.INITIATED : PaymentStatus.EXTERNAL,
             Provider = _settings.PaymentsEnabled ? "stub" : null,
         };
@@ -785,8 +789,8 @@ public sealed class Phase2Service
         if (_settings.PaymentsEnabled)
         {
             var outcome = await _payments.InitiateAsync(payment.Id, amount, currency.ToString(), ct);
-            payment.ProviderRef = outcome.ProviderRef;
-            payment.RawPayload = outcome.RawPayload;
+            payment.ProviderRef = await EnsureUniqueProviderRefAsync(payment.Id, outcome.ProviderRef, ct);
+            payment.RawPayload = PaymentIntegrity.SanitizePayload(outcome.RawPayload);
             LogIntegration("payment", "outbound", "payment", payment.Id.ToString(), outcome);
             if (!outcome.Available) payment.Status = PaymentStatus.INITIATED;
             flag = Enum.TryParse<Flag>(outcome.Flag, out var parsed) ? parsed : Flag.PLANNED;
@@ -817,10 +821,13 @@ public sealed class Phase2Service
                 throw AppException.Unauthorized("Payment webhook authentication failed");
         }
 
+        if (rawBody.Length > PaymentIntegrity.MaxRawBodyChars)
+            throw AppException.BadRequest("PAYLOAD_TOO_LARGE", "Payment webhook body exceeds the stored payload limit.");
+
         var payment = await _db.Payments.FirstOrDefaultAsync(p => p.Id == paymentId, ct)
             ?? throw AppException.NotFound("Payment not found");
-        payment.RawPayload = string.IsNullOrWhiteSpace(rawBody) ? null : rawBody;
-        payment.ProviderRef = body.ProviderRef ?? payment.ProviderRef;
+        payment.RawPayload = PaymentIntegrity.SanitizePayload(rawBody);
+        payment.ProviderRef = await EnsureUniqueProviderRefAsync(payment.Id, body.ProviderRef ?? payment.ProviderRef, ct);
         payment.FailureReason = body.FailureReason;
         if (body.Status == PaymentStatus.SUCCEEDED)
         {
@@ -846,7 +853,7 @@ public sealed class Phase2Service
 
         Audit(staff?.Id, "payment.confirmed", "payment", payment.Id.ToString(), new { payment.Status });
         LogIntegration("payment", "inbound", "payment", payment.Id.ToString(),
-            new IntegrationOutcome(true, Flag.ONLINE.ToString(), payment.ProviderRef, rawBody, null));
+            new IntegrationOutcome(true, Flag.ONLINE.ToString(), payment.ProviderRef, payment.RawPayload ?? "{}", null));
         await _db.SaveChangesAsync(ct);
         return new
         {
@@ -1121,6 +1128,47 @@ public sealed class Phase2Service
         return doc;
     }
 
+    private async Task<(decimal Amount, Currency Currency)> ResolveStateFeeAsync(ApplicationEntity app, CancellationToken ct)
+    {
+        var byType = await _db.StateFees
+            .Where(f => f.IsActive && f.ApplicationTypeId == app.TypeId)
+            .OrderBy(f => f.Code)
+            .FirstOrDefaultAsync(ct);
+        if (byType is not null) return (byType.Amount, byType.Currency);
+
+        var procedureIds = await _db.Procedures
+            .Where(p => p.IsActive && p.ApplicationTypeId == app.TypeId)
+            .Select(p => p.Id)
+            .ToListAsync(ct);
+        if (procedureIds.Count > 0)
+        {
+            var byProcedure = await _db.StateFees
+                .Where(f => f.IsActive && f.ProcedureId != null && procedureIds.Contains(f.ProcedureId.Value))
+                .OrderBy(f => f.Code)
+                .FirstOrDefaultAsync(ct);
+            if (byProcedure is not null) return (byProcedure.Amount, byProcedure.Currency);
+
+            var procedureFee = await _db.Procedures
+                .Where(p => procedureIds.Contains(p.Id) && p.FeeAmount != null)
+                .OrderBy(p => p.SortOrder)
+                .FirstOrDefaultAsync(ct);
+            if (procedureFee?.FeeAmount is decimal amount)
+                return (amount, procedureFee.FeeCurrency ?? Currency.AZN);
+        }
+
+        throw AppException.BadRequest("FEE_NOT_FOUND", "No catalogue state fee is configured for this application type.");
+    }
+
+    private async Task<string?> EnsureUniqueProviderRefAsync(Guid paymentId, string? candidate, CancellationToken ct)
+    {
+        var normalized = PaymentIntegrity.NormalizeProviderRef(candidate);
+        if (normalized is null) return null;
+        var taken = await _db.Payments.AnyAsync(p => p.Id != paymentId && p.ProviderRef == normalized, ct);
+        if (taken)
+            throw AppException.Conflict("This provider reference is already attached to another payment.", "DUPLICATE_PROVIDER_REF");
+        return normalized;
+    }
+
     private void LogIntegration(string provider, string direction, string objectType, string objectId, IntegrationOutcome outcome)
     {
         _db.IntegrationMessages.Add(new IntegrationMessage
@@ -1129,8 +1177,8 @@ public sealed class Phase2Service
             Direction = direction,
             ObjectType = objectType,
             ObjectId = objectId,
-            ProviderRef = outcome.ProviderRef,
-            Payload = string.IsNullOrWhiteSpace(outcome.RawPayload) ? "{}" : outcome.RawPayload,
+            ProviderRef = PaymentIntegrity.NormalizeProviderRef(outcome.ProviderRef),
+            Payload = PaymentIntegrity.SanitizePayload(outcome.RawPayload) ?? "{}",
             Status = outcome.Available ? "sent" : "unavailable",
         });
     }
