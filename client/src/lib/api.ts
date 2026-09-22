@@ -154,6 +154,7 @@ export const api = {
 
   integrationStatus: (code: string) => rawRequest(`/integrations/${code}/status`),
   eResidency: () => rawRequest('/e-residency'),
+  ombudsmanPage: () => rawRequest('/ombudsman/page'),
   externalSubmit: (projectId: string, stageId: string) =>
     rawRequest(`/projects/${projectId}/stages/${stageId}/external-submit`, { method: 'POST' }),
   changeProcedureFlag: (id: string, body: { from: string; to: string; notify: boolean }) =>

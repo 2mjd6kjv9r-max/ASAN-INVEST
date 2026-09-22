@@ -206,6 +206,14 @@ export type EResidencyPage = {
   body: string
 }
 
+export type OmbudsmanPageDto = {
+  slug: string
+  title: string
+  body: string
+  applyEnabled: boolean
+  identificationLevel: IdentificationLevel
+}
+
 export type FlagSummary = {
   workingDays: number
   physicalContacts: number

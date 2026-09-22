@@ -197,6 +197,9 @@ export const en = {
     flagChanged: '{{code}} updated to {{to}}. Open stages were refreshed; completed stages were left unchanged.',
     externalSubmit: 'Record PLAN step for the institution',
     nextPrepare: 'Next step: prepare documents, continue via a representative, or let back-office create an institution task. The adapter is not live.',
+    visaPlan: 'ASAN Viza is not available yet. The platform does not issue visas; integration is pending.',
+    customsPlan: 'Customs incentive is not available yet. The platform does not confirm customs decisions; integration is pending.',
+    utilityPlan: 'Utility connection is not available yet. Electricity, gas and water adapters are not live.',
   },
   cabinet: {
     title: 'Cabinet',
@@ -226,7 +229,11 @@ export const en = {
   },
   ombudsman: {
     title: 'Investment Ombudsman',
-    body: 'The Ombudsman desk opens in Phase 2. In Phase 1, “Complain” creates a supervisor task on the related case and shows the institution’s existing complaint channel.',
+    body: 'The Investment Ombudsman issues a recommendatory opinion; it does not replace an institution’s decision. You apply through a single application (type Ombudsman, identification level 1). A complaint on a rejected case opens an Ombudsman application — investigation, mediation if needed, then an opinion. A successful recommendation can lead a supervisor to re-open the linked case. Public “Apply” is gated until the institutional basis is recorded (TZ §25.3 item 5).',
+    apply: 'Apply',
+    applyHint: 'Sign in or register (email, identification level 1) to open an Ombudsman application.',
+    gated: 'Public submit is not live yet. The institutional basis is still pending. The mechanism is an Ombudsman application, not a supervisor-only task.',
+    process: 'Typical path: apply → investigation → mediation if needed → recommendatory opinion. The Ombudsman does not grant permits or overturn an institution by itself.',
   },
   backoffice: {
     title: 'Back-office',

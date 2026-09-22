@@ -1,8 +1,9 @@
 import { useQuery } from '@tanstack/react-query'
+import { useAuth } from '@/app/providers'
 import { FlagBadge } from '@/components/FlagBadge'
-import { ButtonLink, ErrorState, PageHeader, Skeleton } from '@/components/ui'
+import { Alert, ButtonLink, ErrorState, PageHeader, Skeleton } from '@/components/ui'
 import { api } from '@/lib/api'
-import type { CmsPage, Flag } from '@/lib/types'
+import type { CmsPage, Flag, OmbudsmanPageDto } from '@/lib/types'
 import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { NavLink } from 'react-router-dom'
@@ -183,10 +184,43 @@ export function OpportunitiesPage() {
 }
 
 export function OmbudsmanPage() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const { user } = useAuth()
+  const cms = useQuery({
+    queryKey: ['page', 'ombudsman', i18n.language],
+    queryFn: () => api.page('ombudsman', i18n.language) as Promise<CmsPage>,
+  })
+  const desk = useQuery({
+    queryKey: ['ombudsman-page'],
+    queryFn: () => api.ombudsmanPage() as Promise<OmbudsmanPageDto>,
+  })
+  const title = cms.data?.title || t('ombudsman.title')
+  const body = cms.data?.body || t('ombudsman.body')
+  const applyEnabled = desk.data?.applyEnabled === true
+
   return (
-    <div className="max-w-3xl">
-      <PageHeader title={t('ombudsman.title')} subtitle={t('ombudsman.body')} />
+    <div className="max-w-3xl space-y-4">
+      <PageHeader title={title} subtitle={body} />
+      <div className="card space-y-3">
+        <p className="muted">{t('ombudsman.process')}</p>
+        {applyEnabled ? (
+          user ? (
+            <ButtonLink to="/cabinet/applications/new?typeCode=ombudsman">{t('ombudsman.apply')}</ButtonLink>
+          ) : (
+            <div className="space-y-3">
+              <p className="cap">{t('ombudsman.applyHint')}</p>
+              <div className="flex flex-wrap gap-3">
+                <ButtonLink to="/login">{t('nav.login')}</ButtonLink>
+                <ButtonLink to="/register" variant="secondary">
+                  {t('nav.register')}
+                </ButtonLink>
+              </div>
+            </div>
+          )
+        ) : (
+          <Alert tone="info">{t('ombudsman.gated')}</Alert>
+        )}
+      </div>
     </div>
   )
 }

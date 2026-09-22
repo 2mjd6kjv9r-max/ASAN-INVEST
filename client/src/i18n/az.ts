@@ -200,6 +200,9 @@ export const az: Messages = {
     flagChanged: '{{code}} {{to}} olaraq yeniləndi. Açıq mərhələlər yeniləndi; tamamlanmış mərhələlər saxlanıldı.',
     externalSubmit: 'PLAN addımını qurum üçün qeyd et',
     nextPrepare: 'Növbəti addım: sənədləri hazırlayın, nümayəndə ilə davam edin və ya back-office qurum tapşırığı yaratsın. Adapter işlək deyil.',
+    visaPlan: 'ASAN Viza hələ mövcud deyil. Platforma viza vermir; inteqrasiya gözlənilir.',
+    customsPlan: 'Gömrük güzəşti hələ mövcud deyil. Platforma gömrük qərarını təsdiqləmir; inteqrasiya gözlənilir.',
+    utilityPlan: 'Kommunal qoşulma hələ mövcud deyil. Elektrik, qaz və su adapterləri işlək deyil.',
   },
   cabinet: {
     title: 'Kabinet',
@@ -229,7 +232,11 @@ export const az: Messages = {
   },
   ombudsman: {
     title: 'İnvestisiya Ombudsmanı',
-    body: 'Ombudsman iş masası 2-ci mərhələdə açılır. 1-ci mərhələdə «Şikayət et» bağlı iş üzrə nəzarətçiyə tapşırıq yaradır və qurumun mövcud şikayət kanalını göstərir.',
+    body: 'İnvestisiya Ombudsmanı tövsiyə xarakterli rəy verir; qurum qərarını əvəz etmir. Müraciət Vahid Müraciətdən Ombudsman növü ilə açılır (identifikasiya səviyyəsi 1). Rədd edilmiş case üzrə «Şikayət et» Ombudsman müraciəti yaradır — araşdırma, lazım olsa mediasiya, sonra rəy. Tövsiyə qəbul olunarsa nəzarətçi bağlı case-i yenidən aça bilər. İctimai «Müraciət et» institusional əsas təsdiqlənəndən sonra aktivləşir (TZ §25.3 bənd 5).',
+    apply: 'Müraciət et',
+    applyHint: 'Ombudsman müraciəti açmaq üçün e-poçt ilə (identifikasiya səviyyəsi 1) daxil olun və ya qeydiyyatdan keçin.',
+    gated: 'İctimai göndərmə hələ işlək deyil. İnstitusional əsas gözlənilir. Mexanizm Ombudsman müraciətidir, yalnız nəzarətçi tapşırığı deyil.',
+    process: 'Tipik yol: müraciət → araşdırma → lazım olsa mediasiya → tövsiyə xarakterli rəy. Ombudsman icazə vermir və qurum qərarını təkbaşına ləğv etmir.',
   },
   backoffice: {
     title: 'Back-office',

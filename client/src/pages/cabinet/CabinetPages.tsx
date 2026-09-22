@@ -1,8 +1,10 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Level2Gate } from '@/components/Level2Gate'
+import { PlanNotice } from '@/components/PlanNotice'
 import { StatusBadge } from '@/components/StatusBadge'
 import { Alert, Button, ButtonLink, EmptyState, ErrorState, Field, Input, Kpi, PageHeader, Select, Skeleton, Textarea } from '@/components/ui'
 import { api, isApiError } from '@/lib/api'
+import { planMessageKeyForCode } from '@/lib/phase3'
 import type { ApplicationDto, ApplicationType, CabinetDashboard, DocumentDto, NotificationDto, ProjectDetail, ProjectListItem, Representation, User } from '@/lib/types'
 import { pickName } from '@/lib/types'
 import { useMemo, useState, useEffect } from 'react'
@@ -179,6 +181,7 @@ export function ApplicationNewPage() {
   const [error, setError] = useState<string | null>(null)
   const [needsLevel2, setNeedsLevel2] = useState(false)
   const allowedCodes = types.data?.map((item) => item.code) ?? []
+  const planKey = planMessageKeyForCode(typeCode)
   return (
     <form
       className="card max-w-xl space-y-4"
@@ -213,6 +216,7 @@ export function ApplicationNewPage() {
           {error} {error === t('auth.level2') ? <Link to="/route">Marşrutum</Link> : null}
         </Alert>
       ) : null}
+      {planKey ? <PlanNotice available={false} message={t(planKey)} /> : null}
       <Field label="Type">
         <Select value={typeCode} onChange={(e) => setTypeCode(e.target.value)}>
           {types.data?.map((item) => (
@@ -256,11 +260,13 @@ export function ApplicationDetailPage() {
   if (!app) return <ErrorState message={t('cabinet.applications')} />
 
   const fields = schema?.fields ?? []
+  const planKey = planMessageKeyForCode(app.type.code)
 
   return (
     <div className="space-y-4">
       <PageHeader title={app.publicNumber || app.id} subtitle={app.nextStep ?? undefined} />
       <StatusBadge status={app.investorStatus} />
+      {planKey ? <PlanNotice available={false} message={t(planKey)} /> : null}
       {error === t('auth.level2') ? <Level2Gate user={user} /> : error ? <Alert tone="error">{error}</Alert> : null}
       {app.snapshot ? <Alert tone="info">Snapshot is immutable after submit (FR-APP-04).</Alert> : null}
       <form

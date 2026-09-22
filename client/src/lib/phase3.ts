@@ -49,3 +49,26 @@ export function isZoningProcedure(code: string) {
 export function isBankProcedure(code: string) {
   return code === 'bank_account'
 }
+
+/** PLAN visa / customs / utility application types (seed flags; adapters not live). */
+export function planMessageKeyForCode(code: string): 'phase3.visaPlan' | 'phase3.customsPlan' | 'phase3.utilityPlan' | null {
+  const n = code.trim().toLowerCase().replace(/-/g, '_')
+  switch (n) {
+    case 'visa':
+    case 'asan_viza':
+      return 'phase3.visaPlan'
+    case 'customs':
+    case 'customs_incentive':
+      return 'phase3.customsPlan'
+    case 'utility_connection':
+    case 'electricity':
+    case 'electricity_connection':
+    case 'gas':
+    case 'gas_connection':
+    case 'water':
+    case 'water_connection':
+      return 'phase3.utilityPlan'
+    default:
+      return null
+  }
+}
