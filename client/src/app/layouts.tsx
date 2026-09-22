@@ -2,7 +2,7 @@ import { useAuth, useIsStaff } from '@/app/providers'
 import { BrandMark } from '@/components/BrandMark'
 import { LanguageSwitch } from '@/components/LanguageSwitch'
 import { cn } from '@/lib/cn'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 
@@ -63,14 +63,23 @@ function TopNav({ publicNav }: { publicNav: boolean }) {
   const [open, setOpen] = useState(false)
   const location = useLocation()
 
+  useEffect(() => {
+    setOpen(false)
+  }, [location.pathname])
+
+  useEffect(() => {
+    document.body.classList.toggle('nav-open', open)
+    return () => document.body.classList.remove('nav-open')
+  }, [open])
+
   return (
-    <header className="topnav">
+    <header className={cn('topnav', publicNav ? 'topnav-pub' : 'topnav-app')}>
       <BrandMark />
       {publicNav ? (
-        <nav className="desk" style={{ display: 'flex', gap: 0, flex: 1, justifyContent: 'center', alignItems: 'center', flexWrap: 'nowrap' }} aria-label="Primary">
+        <nav className="desk" aria-label="Primary">
           {navGroups.map((group) => (
             <div className="mm" key={group.labelKey}>
-              <a className="nl" tabIndex={0} href={group.links[0]?.to} style={{ padding: '8px 9px', display: 'inline-block', cursor: 'pointer' }} onClick={(e) => e.preventDefault()}>
+              <a className="nl" tabIndex={0} href={group.links[0]?.to} onClick={(e) => e.preventDefault()}>
                 {t(group.labelKey)} ▾
               </a>
               <div className="mm-p">
@@ -84,55 +93,70 @@ function TopNav({ publicNav }: { publicNav: boolean }) {
           ))}
         </nav>
       ) : (
-        <div style={{ flex: 1 }} />
+        <div className="topnav-spacer" />
       )}
-      <div className="row" style={{ gap: 10, flex: 'none' }}>
-        {publicNav ? (
-          <button type="button" className="iconbtn burger" aria-expanded={open} aria-label={open ? t('nav.close') : t('nav.menu')} onClick={() => setOpen((v) => !v)}>
-            <MenuIcon open={open} />
-          </button>
-        ) : null}
-        <LanguageSwitch />
+      <div className="topnav-tools">
+        <button type="button" className="iconbtn burger" aria-expanded={open} aria-label={open ? t('nav.close') : t('nav.menu')} onClick={() => setOpen((v) => !v)}>
+          <MenuIcon open={open} />
+        </button>
+        <div className="lang-slot">
+          <LanguageSwitch />
+        </div>
         {user ? (
           <>
             <NavLink to={staff ? '/backoffice' : '/cabinet'} className="pill no-underline">
               {staff ? t('nav.backoffice') : t('nav.cabinet')}
             </NavLink>
-            <div className="userchip hidden sm:flex">
+            <div className="userchip">
               <div className="av">{initials(user.email)}</div>
-              <div className="hidden md:block">
+              <div className="userchip-meta">
                 <div className="nm">{user.email.split('@')[0]}</div>
                 <div className="em">{user.email}</div>
               </div>
             </div>
-            <button type="button" className="btn btn-sm" style={{ background: '#fff', color: 'var(--navy)' }} onClick={() => void logout()}>
+            <button type="button" className="btn btn-sm topnav-cta" style={{ background: '#fff', color: 'var(--navy)' }} onClick={() => void logout()}>
               {t('nav.logout')}
             </button>
           </>
         ) : (
           <>
-            <NavLink to="/register" className="nl hidden sm:inline" style={{ padding: '8px 4px' }}>
+            <NavLink to="/register" className="nl topnav-register">
               {t('nav.register')}
             </NavLink>
-            <NavLink to="/login" className="btn btn-sm no-underline" style={{ background: '#fff', color: 'var(--navy)' }}>
+            <NavLink to="/login" className="btn btn-sm no-underline topnav-cta">
               {t('nav.login')}
             </NavLink>
           </>
         )}
       </div>
-      {publicNav && open ? (
+      {open ? (
         <div className="mob-p">
-          {navGroups.map((group) => (
-            <div className="g" key={group.labelKey}>
-              <div className="label">{t(group.labelKey)}</div>
-              {group.links.map((link) => (
-                <NavLink key={link.to} to={link.to} onClick={() => setOpen(false)} className={location.pathname === link.to ? 'on' : undefined}>
-                  {t(link.key)}
-                </NavLink>
-              ))}
+          {publicNav
+            ? navGroups.map((group) => (
+                <div className="g" key={group.labelKey}>
+                  <div className="label">{t(group.labelKey)}</div>
+                  {group.links.map((link) => (
+                    <NavLink key={link.to} to={link.to} onClick={() => setOpen(false)} className={location.pathname === link.to ? 'on' : undefined}>
+                      {t(link.key)}
+                    </NavLink>
+                  ))}
+                </div>
+              ))
+            : null}
+          <div className="g lang-mobile">
+            <div className="label">{t('nav.language')}</div>
+            <LanguageSwitch light />
+          </div>
+          {user ? (
+            <div className="g">
+              <NavLink to={staff ? '/backoffice' : '/cabinet'} onClick={() => setOpen(false)}>
+                {staff ? t('nav.backoffice') : t('nav.cabinet')}
+              </NavLink>
+              <button type="button" className="mob-logout" onClick={() => void logout()}>
+                {t('nav.logout')}
+              </button>
             </div>
-          ))}
-          {!user ? (
+          ) : (
             <div className="g">
               <NavLink to="/login" onClick={() => setOpen(false)}>
                 {t('nav.login')}
@@ -141,7 +165,7 @@ function TopNav({ publicNav }: { publicNav: boolean }) {
                 {t('nav.register')}
               </NavLink>
             </div>
-          ) : null}
+          )}
         </div>
       ) : null}
     </header>
@@ -308,10 +332,11 @@ function AppShell({
         <aside className="sb">
           <ShellNav links={links} />
           <div className="sb-foot">
-            <p className="cap" style={{ marginBottom: 8 }}>
+            <LanguageSwitch light />
+            <p className="cap" style={{ margin: '10px 0 8px' }}>
               {userEmail}
             </p>
-            <button type="button" className="btn btn-t" style={{ padding: 0 }} onClick={onLogout}>
+            <button type="button" className="btn btn-t" onClick={onLogout}>
               {t('nav.logout')}
             </button>
           </div>

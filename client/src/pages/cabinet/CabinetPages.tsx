@@ -25,7 +25,7 @@ export function CabinetHomePage() {
   return (
     <div className="space-y-6">
       <PageHeader title={t('cabinet.next')} />
-      <div className="kpi-grid" style={{ marginBottom: 8, gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' }}>
+      <div className="kpi-grid kpi-2">
         <Kpi label={t('cabinet.applications')} value={String(data.applications.length)} />
         <Kpi label={t('status.WAITING_YOUR_RESPONSE')} value={String(grouped.get('WAITING_YOUR_RESPONSE')?.length ?? 0)} />
       </div>
