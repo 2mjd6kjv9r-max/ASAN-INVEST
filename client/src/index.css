@@ -64,6 +64,7 @@
 @layer base {
   html {
     scroll-behavior: smooth;
+    overflow-x: clip;
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -92,6 +93,37 @@
     font-size: 15px;
     line-height: 1.6;
     -webkit-font-smoothing: antialiased;
+    overflow-x: clip;
+  }
+
+  img,
+  video,
+  svg,
+  canvas,
+  iframe,
+  embed,
+  object {
+    max-width: 100%;
+  }
+
+  img,
+  video {
+    height: auto;
+  }
+
+  pre {
+    max-width: 100%;
+    overflow-x: auto;
+  }
+
+  h1,
+  h2,
+  h3,
+  p,
+  li,
+  td,
+  th {
+    overflow-wrap: break-word;
   }
 
   h1,
@@ -254,12 +286,27 @@
   border-radius: 6px;
 }
 
+a.topnav-cta,
+button.topnav-cta {
+  background: #fff;
+  color: var(--navy);
+  border-color: #fff;
+}
+
+a.topnav-cta:hover,
+button.topnav-cta:hover {
+  background: #edf1f8;
+  color: var(--navy);
+}
+
 .card {
   background: var(--paper);
   border: none;
   border-radius: 12px;
   box-shadow: var(--sh1);
   padding: 24px;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .card-2 {
@@ -447,12 +494,19 @@ textarea.inp {
   background: var(--paper);
   border-radius: 12px;
   box-shadow: var(--sh1);
-  overflow: hidden;
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+.tbl-wrap a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
 }
 
 .kpi-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 20px;
 }
 
@@ -467,7 +521,7 @@ textarea.inp {
 
 .grid2 {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 20px;
 }
 
@@ -479,15 +533,59 @@ textarea.inp {
 
 .topnav {
   background: linear-gradient(180deg, #1e7be8 0%, #1b72e8 60%, #1a6ed9 100%);
-  height: 70px;
+  min-height: 70px;
+  height: auto;
   display: flex;
   align-items: center;
-  padding: 0 24px;
+  padding: 8px 24px;
   gap: 16px;
   position: sticky;
   top: 0;
   z-index: 20;
   border-bottom: none;
+  flex-wrap: nowrap;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.topnav-spacer {
+  flex: 1;
+  min-width: 0;
+}
+
+.topnav nav.desk {
+  display: flex;
+  gap: 0;
+  flex: 1;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+
+.topnav a.nl {
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 14px;
+  white-space: nowrap;
+  line-height: 1;
+  padding: 10px 9px;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  cursor: pointer;
+}
+
+.topnav-tools {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+  min-width: 0;
+}
+
+.topnav-register {
+  padding: 10px 8px;
 }
 
 .logo {
@@ -500,6 +598,8 @@ textarea.inp {
   font-size: 23px;
   letter-spacing: 0.01em;
   white-space: nowrap;
+  min-width: 0;
+  flex: 0 1 auto;
 }
 
 .logo:hover {
@@ -510,6 +610,7 @@ textarea.inp {
   width: 40px;
   height: 40px;
   flex: none;
+  max-width: none;
 }
 
 .logo .lgw {
@@ -533,13 +634,6 @@ textarea.inp {
   margin-top: 4px;
 }
 
-.topnav a.nl {
-  color: rgba(255, 255, 255, 0.82);
-  font-size: 14px;
-  white-space: nowrap;
-  line-height: 1;
-}
-
 .topnav a.nl:hover,
 .topnav a.nl.on {
   color: #fff;
@@ -557,6 +651,8 @@ textarea.inp {
 
 .topnav .burger {
   display: none;
+  min-width: 44px;
+  min-height: 44px;
 }
 
 .burger:hover {
@@ -567,7 +663,7 @@ textarea.inp {
   .topnav nav.desk {
     display: none !important;
   }
-  .topnav .burger {
+  .topnav-pub .burger {
     display: flex;
   }
 }
@@ -606,12 +702,21 @@ textarea.inp {
   margin-bottom: 6px;
 }
 
-.mob-p a {
-  display: block;
-  padding: 9px 10px;
+.mob-p a,
+.mob-p .mob-logout {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  width: 100%;
+  padding: 10px 12px;
   border-radius: 8px;
   font-size: 15px;
   color: var(--text);
+  background: none;
+  border: none;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
 }
 
 .mob-p a:hover {
@@ -635,6 +740,10 @@ textarea.inp {
   cursor: pointer;
   position: relative;
   display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
   padding: 6px;
   border-radius: 6px;
   color: #fff;
@@ -669,6 +778,7 @@ textarea.inp {
   font-size: 14px;
   color: var(--text-2);
   position: relative;
+  min-height: 44px;
   transition:
     background 0.15s,
     color 0.15s;
@@ -706,6 +816,7 @@ textarea.inp {
 
 .pub {
   max-width: 1280px;
+  width: 100%;
   margin: 0 auto;
   padding: 40px 40px 72px;
 }
@@ -719,6 +830,38 @@ textarea.inp {
   flex-wrap: wrap;
 }
 
+.stp-unit {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+  flex: 1;
+}
+
+.form-actions {
+  justify-content: space-between;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.kpi-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.kpi-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.userchip-meta {
+  display: none;
+}
+
+@media (min-width: 1024px) {
+  .userchip-meta {
+    display: block;
+  }
+}
+
 .stepper {
   display: flex;
   background: var(--paper);
@@ -726,6 +869,8 @@ textarea.inp {
   box-shadow: var(--sh1);
   padding: 20px 24px;
   margin-bottom: 24px;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .stp {
@@ -846,6 +991,7 @@ textarea.inp {
   background: var(--paper);
   text-align: left;
   width: 100%;
+  min-height: 44px;
   font: inherit;
   color: var(--text);
   transition:
@@ -941,7 +1087,7 @@ textarea.inp {
   padding: 0 40px;
   width: 100%;
   display: grid;
-  grid-template-columns: 1fr 400px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 400px);
   gap: 64px;
   align-items: center;
 }
@@ -986,6 +1132,8 @@ textarea.inp {
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 14px;
   padding: 26px;
+  min-width: 0;
+  max-width: 100%;
   box-shadow:
     0 24px 60px -16px rgba(8, 18, 31, 0.6),
     inset 0 1px 0 rgba(255, 255, 255, 0.1);
@@ -1095,7 +1243,7 @@ textarea.inp {
   margin: 0 auto;
   padding: 34px 24px 32px;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0;
 }
 
@@ -1177,7 +1325,7 @@ textarea.inp {
 
 .hairgrid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 1px;
   background: var(--line);
   border: 1px solid var(--line);
@@ -1263,12 +1411,6 @@ a.btn-ghost:hover {
   padding: 12px 12px 4px;
 }
 
-@media (max-width: 480px) {
-  .sb-foot {
-    display: none;
-  }
-}
-
 .pubfoot {
   background: var(--paper);
   border-top: 1px solid var(--line);
@@ -1311,8 +1453,10 @@ a.btn-ghost:hover {
 }
 
 .mm-p a {
-  display: block;
-  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 8px 12px;
   font-size: 14px;
   color: var(--text);
   border-radius: 8px;
@@ -1413,6 +1557,7 @@ a.btn-ghost:hover {
   cursor: pointer;
   padding: 3px 0;
   color: var(--text);
+  min-height: 44px;
 }
 
 .ck input {
@@ -1428,6 +1573,7 @@ a.btn-ghost:hover {
   text-align: center;
   padding: 8px 16px;
   border-bottom: 1px solid transparent;
+  overflow-wrap: anywhere;
 }
 
 .userchip {
@@ -1464,12 +1610,13 @@ a.btn-ghost:hover {
 
 .auth-card {
   max-width: 440px;
+  width: 100%;
   margin: 0 auto;
 }
 
 .prj-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 20px;
 }
 
@@ -1499,12 +1646,33 @@ a.btn-ghost:hover {
   border: 1.5px solid #7a8899;
 }
 
+.lang-slot {
+  display: flex;
+}
+
+.lang-mobile .lang-switch {
+  flex-wrap: wrap;
+  width: 100%;
+}
+
+.lang-mobile .lang-switch button {
+  min-width: 44px;
+  min-height: 44px;
+  flex: 1;
+}
+
+body.nav-open {
+  overflow: hidden;
+}
+
 @media (max-width: 1024px) {
-  .kpi-grid {
-    grid-template-columns: repeat(2, 1fr);
+  .kpi-grid,
+  .kpi-2,
+  .kpi-3 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .prj-grid {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .main {
     padding: 24px;
@@ -1513,20 +1681,20 @@ a.btn-ghost:hover {
 
 @media (max-width: 980px) {
   .hero-in {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
     gap: 36px;
   }
   .hero-card {
-    max-width: 480px;
+    max-width: 100%;
   }
   .hero h1 {
-    max-width: 22ch;
+    max-width: none;
   }
 }
 
 @media (max-width: 900px) {
   .statband .statgrid {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 26px 0;
   }
   .statband .stat:nth-child(3) {
@@ -1543,15 +1711,27 @@ a.btn-ghost:hover {
     font-size: 26px;
   }
   .hero-photo {
-    padding: 64px 0 56px;
+    padding: 48px 0 40px;
     min-height: 0;
   }
   .hero-in,
   .sec-in {
-    padding: 0 20px;
+    padding: 0 16px;
   }
   .sec {
     padding: 52px 0;
+  }
+  .hero-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .hero-actions .btn {
+    width: 100%;
+    min-height: 44px;
+    height: auto !important;
+    white-space: normal;
+    padding-top: 12px;
+    padding-bottom: 12px;
   }
   .shell {
     flex-direction: column;
@@ -1563,22 +1743,42 @@ a.btn-ghost:hover {
     border-right: none;
     border-bottom: 1px solid var(--line);
     padding: 8px 12px;
+    -webkit-overflow-scrolling: touch;
   }
   .sb a {
     white-space: nowrap;
+    min-height: 44px;
   }
   .sb a.on::before {
+    display: none;
+  }
+  .sb-foot {
     display: none;
   }
   .grid2 {
     grid-template-columns: 1fr;
   }
   .pub {
-    padding: 24px 20px;
+    padding: 20px 16px 48px;
   }
   .topnav {
-    padding: 0 14px;
+    padding: 6px 12px;
     gap: 8px;
+  }
+  .topnav a.topnav-register {
+    display: none;
+  }
+  .logo {
+    min-height: 44px;
+  }
+  .auth-card a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+  .lang-slot .lang-switch button {
+    min-width: 44px;
+    min-height: 44px;
   }
   .mm-p {
     position: static;
@@ -1605,15 +1805,99 @@ a.btn-ghost:hover {
     border-bottom: none;
     padding: 5px 14px;
   }
+  .btn,
+  .btn-sm,
+  .topnav-cta,
+  .chip,
+  .tab,
+  .acc-h {
+    min-height: 44px;
+    height: auto;
+    padding-top: 10px;
+    padding-bottom: 10px;
+    white-space: normal;
+  }
+  .inp {
+    min-height: 44px;
+  }
+  .card {
+    padding: 16px;
+  }
+  .card > .flex {
+    flex-wrap: wrap;
+  }
+  .card > .flex > .btn {
+    flex: 1 1 140px;
+  }
+  .ctaband {
+    padding: 48px 16px;
+  }
+  .ctaband .row .btn {
+    width: 100%;
+    max-width: 360px;
+  }
+  .pubfoot {
+    padding: 28px 16px;
+  }
+  .pubfoot a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+  .stepper {
+    display: none;
+  }
+  .row {
+    flex-wrap: wrap;
+  }
+  .form-actions .btn {
+    flex: 1 1 auto;
+  }
+  .statband .statgrid {
+    padding: 24px 16px;
+  }
+  .statband .stat {
+    padding: 8px 16px;
+  }
+}
+
+@media (max-width: 639px) {
+  .lang-slot {
+    display: none;
+  }
+  .topnav-app .burger {
+    display: flex;
+  }
+  .logo {
+    gap: 8px;
+    font-size: 18px;
+  }
+  .logo .flw {
+    width: 32px;
+    height: 32px;
+  }
+  .logo .lgw i {
+    display: none;
+  }
+  .userchip-meta {
+    display: none;
+  }
 }
 
 @media (max-width: 480px) {
   .kpi-grid,
-  .prj-grid {
+  .kpi-2,
+  .kpi-3,
+  .prj-grid,
+  .statband .statgrid {
     grid-template-columns: 1fr;
   }
+  .statband .stat {
+    border-left: none;
+    padding: 12px 0;
+  }
   .main {
-    padding: 16px 16px 80px;
+    padding: 16px 16px 96px;
   }
   .sb {
     position: fixed;
@@ -1627,23 +1911,39 @@ a.btn-ghost:hover {
     border-bottom: none;
     justify-content: space-around;
     padding: 6px 4px;
+    overflow-x: auto;
   }
   .sb a {
     flex-direction: column;
     gap: 3px;
-    font-size: 10px;
-    padding: 6px;
+    font-size: 11px;
+    line-height: 1.2;
+    padding: 8px 4px;
     text-align: center;
+    min-width: 56px;
+    min-height: 44px;
+    white-space: normal;
+    max-width: 72px;
+  }
+  .topnav .pill,
+  .topnav .userchip {
+    display: none;
+  }
+  .topnav-app .topnav-cta {
+    display: none;
+  }
+  .btn,
+  .badge,
+  .st,
+  .pill {
+    max-width: 100%;
   }
 }
 
 @media (prefers-reduced-motion: no-preference) {
   [data-rv] {
-    opacity: 0;
-    transform: translateY(22px);
-    transition:
-      opacity 0.7s cubic-bezier(0.22, 0.61, 0.36, 1),
-      transform 0.7s cubic-bezier(0.22, 0.61, 0.36, 1);
+    opacity: 1;
+    transform: none;
   }
   [data-rv].rv-in {
     opacity: 1;

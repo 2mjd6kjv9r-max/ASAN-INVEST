@@ -260,7 +260,7 @@ export function AnalyticsPage() {
       <PageHeader title={t('backoffice.analytics')} />
       {!data ? <Skeleton className="h-32" /> : null}
       {data ? (
-        <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+        <div className="kpi-grid kpi-3">
           <Stat label="Applications" value={String(data.applications.total)} />
           <Stat label="Submitted" value={String(data.applications.submitted)} />
           <Stat label="KYA" value={String(data.kyaCalculations)} />

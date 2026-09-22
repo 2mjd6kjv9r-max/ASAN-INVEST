@@ -194,8 +194,8 @@ export function RoutePage() {
           <div className="stepper">
             {steps.map((item, i) => (
               <div className="stp" key={item.title}>
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 110 }}>
-                  <div
+              <div className="stp-unit">
+                <div
                     className="c"
                     style={
                       i < step
@@ -215,13 +215,13 @@ export function RoutePage() {
               </div>
             ))}
           </div>
-          <div className="card space-y-4" style={{ padding: 28 }}>
+          <div className="card space-y-4">
             <p className="cap">
               {t('common.next')} · {step + 1} / {steps.length}
             </p>
             <h2>{current.title}</h2>
             {current.body}
-            <div className="row" style={{ justifyContent: 'space-between', marginTop: 8 }}>
+            <div className="row form-actions">
               {step > 0 ? (
                 <Button variant="secondary" type="button" onClick={() => setStep((s) => s - 1)}>
                   {t('common.back')}
