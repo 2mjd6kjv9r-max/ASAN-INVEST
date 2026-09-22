@@ -555,6 +555,10 @@ textarea.inp {
   border-radius: 6px;
 }
 
+.topnav .burger {
+  display: none;
+}
+
 .burger:hover {
   background: rgba(255, 255, 255, 0.1);
 }
@@ -563,7 +567,7 @@ textarea.inp {
   .topnav nav.desk {
     display: none !important;
   }
-  .burger {
+  .topnav .burger {
     display: flex;
   }
 }
