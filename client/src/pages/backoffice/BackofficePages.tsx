@@ -8,6 +8,7 @@ import { pickName } from '@/lib/types'
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import { useAuth } from '@/app/providers'
 
 const STATUSES: CaseInternalStatus[] = [
   'DRAFT',
@@ -209,11 +210,13 @@ export function EvaluationsPage() {
 
 export function AdminPage() {
   const { t, i18n } = useTranslation()
+  const { user } = useAuth()
+  const isSysadmin = Boolean(user?.roles.includes('SYSADMIN'))
   const users = useQuery({ queryKey: ['admin-users'], queryFn: api.adminUsers })
   const cms = useQuery({ queryKey: ['admin-cms'], queryFn: api.adminCms })
   const rules = useQuery({ queryKey: ['admin-rules'], queryFn: api.adminRuleSets })
-  const procedures = useQuery({ queryKey: ['admin-procedures'], queryFn: () => api.adminProcedures() as Promise<Procedure[]> })
-  const history = useQuery({ queryKey: ['flag-changes'], queryFn: () => api.flagChanges() as Promise<FlagChangeEvent[]> })
+  const procedures = useQuery({ queryKey: ['admin-procedures'], queryFn: () => api.adminProcedures() as Promise<Procedure[]>, enabled: isSysadmin })
+  const history = useQuery({ queryKey: ['flag-changes'], queryFn: () => api.flagChanges() as Promise<FlagChangeEvent[]>, enabled: isSysadmin })
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [role, setRole] = useState('CASE_MANAGER')
@@ -226,7 +229,7 @@ export function AdminPage() {
   return (
     <div className="space-y-6">
       <PageHeader title={t('backoffice.admin')} />
-      <section className="card space-y-4">
+      {isSysadmin ? <section className="card space-y-4">
         <h2 className="text-lg">{t('phase3.flagEditor')}</h2>
         <p className="muted">{t('phase3.flagEditorHint')}</p>
         {flagError ? <Alert tone="error">{flagError}</Alert> : null}
@@ -262,6 +265,7 @@ export function AdminPage() {
             className="grid gap-3 sm:grid-cols-3"
             onSubmit={(e) => {
               e.preventDefault()
+              if (selected.flag === 'PLANNED' && toFlag !== 'PLANNED' && !window.confirm(t('phase3.flagConfirm'))) return
               setFlagError(null)
               void api
                 .changeProcedureFlag(selected.id, { from: selected.flag, to: toFlag, notify })
@@ -307,7 +311,7 @@ export function AdminPage() {
             ))}
           </ul>
         ) : null}
-      </section>
+      </section> : null}
       <section className="card">
         <h2 className="text-lg">Users</h2>
         <form

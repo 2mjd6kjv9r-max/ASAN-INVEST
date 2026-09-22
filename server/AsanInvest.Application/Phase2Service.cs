@@ -271,6 +271,8 @@ public sealed class Phase2Service
 
     public async Task<object> PutKycPacketAsync(CurrentUser user, JsonElement packet, CancellationToken ct)
     {
+        if (!Phase3Integrity.HasKycContent(packet))
+            throw AppException.BadRequest("KYC_PACKET_REQUIRED", "KYC packet fields cannot all be empty");
         var profile = await ProfileOf(user.Id, ct);
         profile.UboStructure = packet.GetRawText();
         Audit(user.Id, "kyc.packet_saved", "profile", profile.Id.ToString(), new { });
@@ -303,6 +305,16 @@ public sealed class Phase2Service
 
         if (string.IsNullOrWhiteSpace(profile.UboStructure) || profile.UboStructure == "{}")
             throw AppException.BadRequest("KYC_PACKET_REQUIRED", "Save the shared KYC packet before sending it to banks");
+        try
+        {
+            using var kycDoc = JsonDocument.Parse(profile.UboStructure);
+            if (!Phase3Integrity.HasKycContent(kycDoc.RootElement))
+                throw AppException.BadRequest("KYC_PACKET_REQUIRED", "Save the shared KYC packet before sending it to banks");
+        }
+        catch (JsonException)
+        {
+            throw AppException.BadRequest("KYC_PACKET_REQUIRED", "KYC packet is not valid JSON");
+        }
 
         var type = await _db.ApplicationTypes.FirstOrDefaultAsync(t => t.Code == "bank_kyc" && t.IsActive, ct)
             ?? throw AppException.BadRequest("NOT_CONFIGURED", "bank_kyc application type is not seeded");

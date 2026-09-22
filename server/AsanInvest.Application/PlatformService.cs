@@ -349,11 +349,20 @@ public sealed class PlatformService
         Stage? stage = null;
         if (stageId is not null)
         {
-            stage = await _db.Stages.Include(s => s.Project).FirstOrDefaultAsync(s => s.Id == stageId, ct)
+            stage = await _db.Stages.Include(s => s.Project).Include(s => s.Procedure).Include(s => s.Application)!.ThenInclude(a => a!.Case)
+                .FirstOrDefaultAsync(s => s.Id == stageId, ct)
                 ?? throw AppException.NotFound("Stage not found");
             if (stage.Project.ProfileId != profile.Id) throw AppException.Forbidden();
             if (projectId is not null && projectId != stage.ProjectId)
                 throw AppException.BadRequest("STAGE_PROJECT_MISMATCH", "Stage does not belong to this project");
+            if (stage.Procedure.ApplicationTypeId is Guid expectedTypeId && expectedTypeId != type.Id)
+                throw AppException.BadRequest("STAGE_TYPE_MISMATCH", "Application type does not match this passport stage");
+            if (stage.ApplicationId is Guid existingId)
+            {
+                var existing = stage.Application ?? await _db.Applications.Include(a => a.Case).FirstOrDefaultAsync(a => a.Id == existingId, ct);
+                if (existing?.Snapshot is not null || existing?.Case is not null)
+                    throw AppException.Conflict("This passport stage already has a submitted application", "STAGE_HAS_APPLICATION");
+            }
             projectId = stage.ProjectId;
         }
         if (projectId is not null)
@@ -1188,8 +1197,7 @@ public sealed class PlatformService
     {
         var summary = FlagSummary.FromStages(stages.Select(s =>
         {
-            var completed = s.ActualCompletedAt is not null
-                || s.Application?.Case?.InternalStatus is CaseInternalStatus.COMPLETED or CaseInternalStatus.REJECTED or CaseInternalStatus.WITHDRAWN or CaseInternalStatus.ARCHIVED;
+            var completed = !FlagSummary.IsOpenForFlagRefresh(s.ActualCompletedAt, false, s.Application?.Case?.InternalStatus);
             return (s.Flag, s.ExpectedDurationDays, completed, s.IsNotApplicable);
         }));
         return new { workingDays = summary.WorkingDays, physicalContacts = summary.PhysicalContacts };

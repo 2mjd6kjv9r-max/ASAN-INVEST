@@ -426,6 +426,7 @@ export const INTERNAL_ROLES: UserRole[] = [
   'CONTENT_MANAGER',
   'ANALYST',
   'SYSADMIN',
+  'OMBUDSMAN_OFFICER',
 ]
 
 export function isInternal(roles: UserRole[]) {
