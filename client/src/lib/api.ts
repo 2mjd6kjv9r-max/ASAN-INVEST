@@ -140,9 +140,30 @@ export const api = {
     rawRequest('/auth/asan-login', { method: 'POST' }) as Promise<{
       provider: string
       available: boolean
+      flag?: string
       identificationLevelIfCompleted: string
       message: string
+      code?: string | null
     }>,
+  authProviders: () => rawRequest('/auth/providers') as Promise<unknown>,
+  startENonresident: () => rawRequest('/auth/e-nonresident/start', { method: 'POST' }),
+  completeENonresident: (assertion?: string) =>
+    rawRequest('/auth/e-nonresident/complete', { method: 'POST', body: { assertion } }),
+  startForeignEsign: (issuer?: string) =>
+    rawRequest('/auth/foreign-esign/start', { method: 'POST', body: { issuer } }),
+
+  integrationStatus: (code: string) => rawRequest(`/integrations/${code}/status`),
+  eResidency: () => rawRequest('/e-residency'),
+  externalSubmit: (projectId: string, stageId: string) =>
+    rawRequest(`/projects/${projectId}/stages/${stageId}/external-submit`, { method: 'POST' }),
+  changeProcedureFlag: (id: string, body: { from: string; to: string; notify: boolean }) =>
+    rawRequest(`/admin/procedures/${id}/flag`, { method: 'POST', body }),
+  flagChanges: () => rawRequest('/admin/flag-changes'),
+  kycPacket: () => rawRequest('/me/kyc-packet'),
+  putKycPacket: (packet: unknown) => rawRequest('/me/kyc-packet', { method: 'PUT', body: packet }),
+  bankSubmissions: (projectId: string) => rawRequest(`/projects/${projectId}/bank-submissions`),
+  createBankSubmissions: (projectId: string, body: { bankInstitutionIds: string[]; channel?: string }) =>
+    rawRequest(`/projects/${projectId}/bank-submissions`, { method: 'POST', body }),
 
   createGuest: (locale?: string) =>
     rawRequest('/guest-sessions', { method: 'POST', body: { locale } }) as Promise<{ token: string; expiresInDays: number }>,

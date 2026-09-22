@@ -90,6 +90,7 @@ export type Procedure = {
   feeCurrency: Currency | null
   legalBasis: string | null
   eServiceUrl: string | null
+  integrationCode?: string | null
   institution: { id: string; code: string; names: Localized }
 }
 
@@ -173,6 +174,72 @@ export type Profile = {
   companyActivity: string | null
   uboStructure: unknown
   version: number
+  eResidencyStatus?: EResidencyStatus
+}
+
+export type AuthProviderCode = 'EMAIL' | 'ASAN_LOGIN' | 'E_NONRESIDENT' | 'FOREIGN_ESIGN'
+export type EResidencyStatus = 'NONE' | 'APPLIED' | 'PLAN_PENDING' | 'GRANTED'
+export type BankChannel = 'PHYSICAL_SIGNATURE' | 'REMOTE_ESIGN'
+
+export type AuthProviderDto = {
+  code: AuthProviderCode
+  available: boolean
+  flag: Flag
+  identificationLevelIfCompleted: IdentificationLevel
+  message: string
+}
+
+export type IntegrationStatus = {
+  code: string
+  available: boolean
+  flag: Flag
+  enabled: boolean
+  message: string
+}
+
+export type EResidencyPage = {
+  flag: Flag
+  legalStatus: string
+  grantAvailable: boolean
+  applyEnabled: boolean
+  title: string
+  body: string
+}
+
+export type FlagSummary = {
+  workingDays: number
+  physicalContacts: number
+}
+
+export type FlagChangeEvent = {
+  id: string
+  procedureId: string
+  procedureCode: string
+  fromFlag: Flag
+  toFlag: Flag
+  actorUserId: string
+  notifiedCount: number
+  occurredAt: string
+}
+
+export type HonestyOutcome = {
+  available: boolean
+  flag: Flag
+  message: string
+  code?: string | null
+  next?: 'representative' | 'wait' | string
+  identificationLevel?: IdentificationLevel
+  virtualFin?: string | null
+}
+
+export type BankSubmission = {
+  applicationId: string
+  publicNumber: string | null
+  caseId: string | null
+  bankInstitutionId: string | null
+  internalStatus?: CaseInternalStatus
+  investorStatus: InvestorVisibleStatus
+  channel: BankChannel | null
 }
 
 export type User = {
@@ -191,6 +258,10 @@ export type User = {
   consentedAt: string | null
   pepSanctionsStatus: string | null
   pepSanctionsCheckedAt: string | null
+  virtualFin?: string | null
+  fin?: string | null
+  esignIssuer?: string | null
+  eResidencyStatus?: EResidencyStatus
   profile: Profile | null
 }
 
@@ -213,19 +284,22 @@ export type ProjectListItem = {
   stages: { id: string; flag: Flag; sortOrder: number; expectedDurationDays: number | null; displayStatus: StageDisplayStatus }[]
 }
 
+export type ProjectStage = {
+  id: string
+  flag: Flag
+  sortOrder: number
+  expectedDurationDays: number | null
+  procedure: { code: string; names: Localized }
+  displayStatus: StageDisplayStatus
+}
+
 export type ProjectDetail = {
   id: string
   name: string
   volumeAmount: string
   status: ProjectStatus
-  stages: {
-    id: string
-    flag: Flag
-    sortOrder: number
-    expectedDurationDays: number | null
-    procedure: { code: string; names: Localized }
-    displayStatus: StageDisplayStatus
-  }[]
+  flagSummary?: FlagSummary
+  stages: ProjectStage[]
 }
 
 export type FormField = {

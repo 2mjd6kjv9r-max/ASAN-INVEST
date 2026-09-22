@@ -33,6 +33,7 @@ const navGroups = [
     labelKey: 'nav.groupPractical',
     links: [
       { to: '/company-registration', key: 'nav.company' },
+      { to: '/e-residency', key: 'nav.eResidency' },
       { to: '/ombudsman', key: 'nav.ombudsman' },
     ],
   },

@@ -15,6 +15,7 @@ import {
 } from '@/pages/cabinet/CabinetPages'
 import { ForgotPasswordPage, LoginPage, RegisterPage, ResetPasswordPage, VerifyEmailPage } from '@/pages/public/AuthPages'
 import { CmsPageView, CompanyRegistrationPage, HomePage, OmbudsmanPage, OpportunitiesPage } from '@/pages/public/HomePage'
+import { EResidencyPage } from '@/pages/public/EResidencyPage'
 import { IncentivePage } from '@/pages/public/IncentivePage'
 import { KyaPage } from '@/pages/public/KyaPage'
 import { RoutePage } from '@/pages/public/RoutePage'
@@ -33,6 +34,7 @@ export function AppRouter() {
         <Route path="/about" element={<CmsPageView slug="about" />} />
         <Route path="/route" element={<RoutePage />} />
         <Route path="/incentives" element={<IncentivePage />} />
+        <Route path="/e-residency" element={<EResidencyPage />} />
         <Route path="/kya" element={<KyaPage />} />
         <Route path="/ombudsman" element={<OmbudsmanPage />} />
         <Route path="/company-registration" element={<CompanyRegistrationPage />} />

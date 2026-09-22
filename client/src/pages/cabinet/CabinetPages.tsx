@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { FlagBadge } from '@/components/FlagBadge'
+import { Level2Gate } from '@/components/Level2Gate'
 import { StatusBadge } from '@/components/StatusBadge'
 import { Alert, Button, ButtonLink, EmptyState, ErrorState, Field, Input, Kpi, PageHeader, Select, Skeleton, Textarea } from '@/components/ui'
 import { api, isApiError } from '@/lib/api'
@@ -7,7 +7,9 @@ import type { ApplicationDto, ApplicationType, CabinetDashboard, DocumentDto, No
 import { pickName } from '@/lib/types'
 import { useMemo, useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useAuth } from '@/app/providers'
+import { PassportStages } from '@/pages/cabinet/PassportStages'
 
 export function CabinetHomePage() {
   const { t } = useTranslation()
@@ -128,7 +130,7 @@ export function ProjectNewPage() {
 }
 
 export function ProjectPassportPage() {
-  const { t, i18n } = useTranslation()
+  const { t } = useTranslation()
   const { id } = useParams()
   const query = useQuery({ queryKey: ['project', id], queryFn: () => api.project(id!) as Promise<ProjectDetail>, enabled: Boolean(id) })
   if (query.isLoading) return <Skeleton className="h-40" />
@@ -138,28 +140,7 @@ export function ProjectPassportPage() {
   return (
     <div className="space-y-4">
       <PageHeader title={project.name} subtitle={t('cabinet.passport')} />
-      <ol className="space-y-3">
-        {project.stages.map((stage) => (
-          <li key={stage.id} className="card">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <p className="font-semibold">{pickName(stage.procedure.names, i18n.language, stage.procedure.code)}</p>
-                <p className="text-sm text-muted">{stage.expectedDurationDays ? `${stage.expectedDurationDays} days` : null}</p>
-              </div>
-              <div className="flex items-center gap-2">
-                <FlagBadge flag={stage.flag} />
-                <StatusBadge status={stage.displayStatus} />
-              </div>
-            </div>
-            {stage.displayStatus === 'LOCKED' ? <p className="mt-2 text-sm text-muted">{t('cabinet.lockedWhy')}</p> : null}
-            {stage.displayStatus === 'OPEN' ? (
-              <ButtonLink className="mt-3" to={`/cabinet/applications/new?stageId=${stage.id}&projectId=${project.id}&source=PASSPORT_STAGE`} variant="secondary">
-                {t('cabinet.newApplication')}
-              </ButtonLink>
-            ) : null}
-          </li>
-        ))}
-      </ol>
+      <PassportStages project={project} />
     </div>
   )
 }
@@ -190,16 +171,18 @@ export function ApplicationsPage() {
 
 export function ApplicationNewPage() {
   const { t, i18n } = useTranslation()
+  const { user } = useAuth()
   const navigate = useNavigate()
   const types = useQuery({ queryKey: ['application-types'], queryFn: () => api.applicationTypes() as Promise<ApplicationType[]> })
-  const [typeCode, setTypeCode] = useState('consultation')
+  const [params] = useSearchParams()
+  const [typeCode, setTypeCode] = useState(params.get('typeCode') || 'consultation')
   const [error, setError] = useState<string | null>(null)
+  const [needsLevel2, setNeedsLevel2] = useState(false)
   return (
     <form
       className="card max-w-xl space-y-4"
       onSubmit={(e) => {
         e.preventDefault()
-        const params = new URLSearchParams(window.location.search)
         void api
           .createApplication({
             typeCode,
@@ -210,14 +193,17 @@ export function ApplicationNewPage() {
           })
           .then((row) => navigate(`/cabinet/applications/${(row as ApplicationDto).id}`))
           .catch((err) => {
-            if (isApiError(err) && err.code === 'IDENTIFICATION_LEVEL') setError(t('auth.level2'))
-            else if (isApiError(err) && err.code === 'CAPITAL_BLOCKED') setError(err.message)
+            if (isApiError(err) && err.code === 'IDENTIFICATION_LEVEL') {
+              setNeedsLevel2(true)
+              setError(t('auth.level2'))
+            } else if (isApiError(err) && err.code === 'CAPITAL_BLOCKED') setError(err.message)
             else setError(isApiError(err) ? err.message : t('common.error'))
           })
       }}
     >
       <PageHeader title={t('cabinet.newApplication')} />
-      {error ? (
+      {needsLevel2 ? <Level2Gate user={user} /> : null}
+      {error && !needsLevel2 ? (
         <Alert tone="warning">
           {error} {error === t('auth.level2') ? <Link to="/route">Marşrutum</Link> : null}
         </Alert>
@@ -238,6 +224,7 @@ export function ApplicationNewPage() {
 
 export function ApplicationDetailPage() {
   const { t } = useTranslation()
+  const { user } = useAuth()
   const { id } = useParams()
   const client = useQueryClient()
   const query = useQuery({ queryKey: ['application', id], queryFn: () => api.application(id!) as Promise<ApplicationDto>, enabled: Boolean(id) })
@@ -269,7 +256,7 @@ export function ApplicationDetailPage() {
     <div className="space-y-4">
       <PageHeader title={app.publicNumber || app.id} subtitle={app.nextStep ?? undefined} />
       <StatusBadge status={app.investorStatus} />
-      {error ? <Alert tone="error">{error}</Alert> : null}
+      {error === t('auth.level2') ? <Level2Gate user={user} /> : error ? <Alert tone="error">{error}</Alert> : null}
       {app.snapshot ? <Alert tone="info">Snapshot is immutable after submit (FR-APP-04).</Alert> : null}
       <form
         className="card space-y-3"
@@ -359,14 +346,32 @@ export function ApplicationDetailPage() {
 
 export function ProfilePage() {
   const { t } = useTranslation()
+  const { user } = useAuth()
   const query = useQuery({ queryKey: ['profile'], queryFn: () => api.profile() as Promise<User> })
   const reps = useQuery({ queryKey: ['representations'], queryFn: () => api.representations() as Promise<Representation[]> })
   const [companyName, setCompanyName] = useState('')
   const [repEmail, setRepEmail] = useState('')
   if (query.isLoading) return <Skeleton className="h-32" />
+  const me = query.data
   return (
     <div className="space-y-6">
       <PageHeader title={t('cabinet.profile')} />
+      <section className="card space-y-3">
+        <p className="text-sm">{user?.email ?? me?.email}</p>
+        <p className="cap">
+          {t('phase3.identification')}: {user?.identificationLevel ?? me?.identificationLevel} · {user?.authProvider ?? me?.authProvider}
+        </p>
+        {user?.eResidencyStatus && user.eResidencyStatus !== 'NONE' ? (
+          <p className="cap">
+            {t('phase3.eResidencyStatus')}: {user.eResidencyStatus}
+          </p>
+        ) : (
+          <p className="cap">
+            {t('phase3.eResidencyStatus')}: {user?.eResidencyStatus ?? me?.profile?.eResidencyStatus ?? 'NONE'}
+          </p>
+        )}
+        {user?.identificationLevel !== 'LEGAL' ? <Level2Gate user={user} compact /> : null}
+      </section>
       <form
         className="card max-w-xl space-y-3"
         onSubmit={(e) => {
@@ -374,9 +379,8 @@ export function ProfilePage() {
           void api.updateProfile({ companyName })
         }}
       >
-        <p className="text-sm text-muted">{query.data?.email}</p>
         <Field label="Company">
-          <Input defaultValue={query.data?.profile?.companyName ?? ''} onChange={(e) => setCompanyName(e.target.value)} />
+          <Input defaultValue={me?.profile?.companyName ?? ''} onChange={(e) => setCompanyName(e.target.value)} />
         </Field>
         <Button type="submit">{t('common.save')}</Button>
       </form>

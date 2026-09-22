@@ -1,5 +1,6 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useAuth } from '@/app/providers'
+import { Level2Gate } from '@/components/Level2Gate'
 import { Alert, Button, ButtonLink, Field, Input, PageHeader, Select } from '@/components/ui'
 import { api, isApiError } from '@/lib/api'
 import { readGuestAnswers, readGuestToken, writeGuestAnswers, ensureGuestToken } from '@/lib/guest'
@@ -242,7 +243,7 @@ export function RoutePage() {
           </div>
         </section>
       ) : (
-        <RouteResultView result={result} onSave={() => (user ? save.mutate() : navigate('/register'))} canSave={Boolean(user)} saving={save.isPending} />
+        <RouteResultView result={result} onSave={() => (user ? save.mutate() : navigate('/register'))} canSave={Boolean(user)} saving={save.isPending} user={user} />
       )}
     </div>
   )
@@ -253,11 +254,13 @@ function RouteResultView({
   onSave,
   canSave,
   saving,
+  user,
 }: {
   result: RouteResult
   onSave: () => void
   canSave: boolean
   saving: boolean
+  user: ReturnType<typeof useAuth>['user']
 }) {
   const { t } = useTranslation()
   return (
@@ -286,6 +289,7 @@ function RouteResultView({
         </div>
       </dl>
       <p>{result.visaNote}</p>
+      {user && user.identificationLevel !== 'LEGAL' ? <Level2Gate user={user} compact /> : null}
       <FeeList title={t('route.feesState')} lines={result.stateFees} empty={t('route.noFees')} />
       <FeeList title={t('route.feesPartner')} lines={result.partnerFees} empty={t('route.noFees')} />
       <p className="text-sm text-muted">{t('estimatedNote')}</p>
