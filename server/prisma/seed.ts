@@ -13,8 +13,8 @@ import {
   UserStatus,
   WorkflowKind,
 } from "@prisma/client";
-import { prisma } from "../src/db/prisma.js";
-import { INVESTOR_VISIBLE_STATUS } from "../src/db/status-mapping.js";
+import { prisma } from "./db/prisma.js";
+import { INVESTOR_VISIBLE_STATUS } from "./db/status-mapping.js";
 
 const SYSADMIN_ID = "00000000-0000-4000-8000-000000000001";
 const SYSADMIN_PROFILE_ID = "00000000-0000-4000-8000-000000000002";

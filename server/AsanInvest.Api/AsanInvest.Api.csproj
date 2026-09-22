@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+    <ItemGroup>
+      <PackageReference Include="FluentValidation.AspNetCore" Version="11.3.1" />
+      <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.11" />
+    </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AsanInvest.Application\AsanInvest.Application.csproj" />
+    <ProjectReference Include="..\AsanInvest.Infrastructure\AsanInvest.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>
