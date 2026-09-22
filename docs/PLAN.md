@@ -5,7 +5,7 @@ If this plan and the TZ disagree, the TZ wins.
 
 This document covers only **Mərhələ 1 — Əsas platforma** (TZ §25.1). It does not authorise Phase 2 or Phase 3 work.
 
-No application code exists in the repository yet. Nothing in this plan should be treated as an existing API, table, or environment variable.
+Phase 1 already has a PostgreSQL schema and an Express API on `main`. **New backend work targets ASP.NET Core Web API (C#) + EF Core**, not further Express features. The HTTP contract from that Express work is frozen in [`docs/api.md`](api.md) and must be preserved (routes, `/api/v1` prefix, JSON shapes). Do not invent new tables, government APIs, or environment variables beyond what `.env.example` and `docs/api.md` already document.
 
 ---
 
@@ -18,23 +18,46 @@ The TZ does not prescribe languages or frameworks. The stack below is chosen to 
 | Frontend | **React + TypeScript** (Vite) | Three environments share one component system (UI-01): açıq portal, şəxsi kabinet, back-office. TypeScript keeps role, status, bayraq, and identification-level contracts aligned with the API. React Router maps the site map in TZ §4.2. |
 | Styling | **Tailwind CSS** | ASAN Invest brand language is a dark navy palette, white surfaces, and a strict government look (TZ §24.1). Utility tokens can encode AVTO / ONLAYN / FİZİKİ / PLAN colours (UI-03) without a second design runtime. |
 | i18n | **i18next** (or equivalent) | UI-04 requires Azərbaycan (default), English, Russian, Turkish, Arabic with RTL for Arabic. Legal texts stay Azerbaijani. |
-| Backend | **Node.js + Express + TypeScript** | Matches the 18-module map (TZ §4.1) plus shared services (TZ §21) without microservices. Express middleware covers authn/authz (GİR-01…04), validation, and audit. REST JSON is enough: Phase 1 has **no state API dependency** (TZ §25.1). |
-| Database | **PostgreSQL** | TZ §4.3 is a relational model (1:1, 1:N, N:M, versioned snapshots, immutable audit). PostgreSQL supports `NUMERIC` amounts, `JSONB` snapshots, row-level constraints, and data residency in Azerbaijan (NFR-01) on a local or in-country host. |
-| ORM / migrations | **Prisma** | Versioned schema matching TZ objects; migrations are the only way tables are created. |
-| API | **REST**, `/api/v1` | Simple, cacheable public GETs for the open portal; cookie-authenticated cabinet and back-office. |
+| Backend | **ASP.NET Core Web API (C#)** | Same modular monolith as TZ §4.1 and shared services (TZ §21), without microservices. Filters/middleware cover authn/authz (GİR-01…04), validation, and audit. Controllers expose the frozen REST contract in [`docs/api.md`](api.md). Phase 1 has **no state API dependency** (TZ §25.1). |
+| Database | **PostgreSQL** | TZ §4.3 is a relational model (1:1, 1:N, N:M, versioned snapshots, immutable audit). PostgreSQL supports `NUMERIC` amounts, `JSONB` snapshots, row-level constraints, and data residency in Azerbaijan (NFR-01) on a local or in-country host. The existing Phase 1 schema (tables, enums, checks) stays canonical. |
+| ORM / migrations | **Entity Framework Core** (Npgsql) | Maps C# entities onto the existing PostgreSQL tables (snake_case). EF Core migrations are the schema change path going forward; do not introduce a second parallel schema. |
+| API | **REST**, `/api/v1` | Unchanged from the Phase 1 Express API. See §1.1 and [`docs/api.md`](api.md). |
 | Auth (Phase 1) | **Email + one-time code / password**; session as **httpOnly refresh cookie + short-lived access JWT** | FR-AUTH-01 and identification level 1. Internal roles require 2FA (NFR-02, TZ §5). **ASAN Login / SİMA** is listed in Phase 1 (TZ §25.1) but is a level-2 integration (TZ §22): implement a provider interface and email path first; do not call a government API that is not specified in this repo. |
 | Files | Local disk in development; object storage adapter behind the sənəd servisi | FR-CAB-04 / TZ §21. Malware scan is required before production (NFR-02). |
 | Email / SMS | Provider adapters (level 1, TZ §22) | Bildirişlər (FR-NOT-01…06). MVP may log outbound messages if credentials are absent; the adapter stays. |
 | Rule engine | In-process, versioned rules in PostgreSQL | Z-06: KYA, təşviq, risk, marşrut, bayraq, and case assignment share one engine. Rules are edited only in İnzibatçılıq (FR-ADM-07, FR-ADM-08). |
 | SI (KYA free text) | Optional adapter | FR-KYA-01…02. Phase 1 must work with the **structured form** even if no model provider is configured. The model must not decide procedures (NFR-03); the rule engine does. |
 
-Out of scope for the runtime in Phase 1: GraphQL, Kafka, Kubernetes, a separate CMS product, live payment acquiring, DVX/bank APIs.
+Out of scope for the runtime in Phase 1: GraphQL, Kafka, Kubernetes, a separate CMS product, live payment acquiring, DVX/bank APIs. Do not extend the Express `server/src` tree; replace it with the ASP.NET solution below.
+
+### 1.1. Frozen REST contract
+
+The ASP.NET API **must** keep the conventions already documented from the Phase 1 backend PR ([`docs/api.md`](api.md), [`docs/backend.md`](backend.md)). Frontend and QA treat that file as the contract, not controller class names.
+
+| Convention | Required value |
+| --- | --- |
+| Prefix | `/api/v1` (health also at `GET /health` and `GET /api/v1/health`) |
+| Success body | `{ data, meta? }` |
+| Error body | `{ error: { code, message, details? } }` with the same `code` strings (`UNAUTHORIZED`, `FORBIDDEN`, `NOT_FOUND`, `CONFLICT`, `RATE_LIMITED`, `INTERNAL_ERROR`, `WORKFLOW_PHASE2`, …) |
+| JSON names | `camelCase` (`identificationLevel`, `internalStatus`, `publicNumber`) |
+| Enums | Prisma/schema names, `SCREAMING_SNAKE` (`INVESTOR`, `BASIC`, `AUTO`, `DRAFT`, …) — not numeric, not PascalCase |
+| Money | Decimal **strings** (`"1000.00"`), never JSON numbers |
+| Dates | ISO-8601 UTC |
+| Auth | `Authorization: Bearer <accessToken>` plus httpOnly cookie `refresh_token` on `/api/v1/auth` |
+| Register | `201` + `{ data: { accessToken, user } }` |
+| Login | `{ data: { accessToken, user } }` or `{ data: { twoFactorRequired: true, challengeId } }` |
+| Logout / reset-password / verify-email | `204` empty body |
+| Roles | `INVESTOR`, `CASE_MANAGER`, `SUPERVISOR`, `INSTITUTION_REP`, `EVALUATOR`, `CONTENT_MANAGER`, `ANALYST`, `SYSADMIN` |
+| Case `internalStatus` | `DRAFT`, `SUBMITTED`, `REGISTERED`, `IN_EVALUATION`, `WAITING_ADDITIONAL_INFO`, `ASSIGNED_FOR_EXECUTION`, `UNDER_REVIEW`, `INTER_AGENCY_COORDINATION`, `RESULT_BEING_PREPARED`, `COMPLETED`, `REJECTED`, `WITHDRAWN`, `ARCHIVED` |
+| Listen | Port **4000** in development (`CLIENT_ORIGIN` CORS + credentials) |
+
+Route table (do not rename or nest differently): see [`docs/api.md`](api.md). That includes `/auth/*`, `/guest-sessions`, `/pages/:slug`, `/opportunities`, `/classifications`, `/procedures`, `/company-registration`, `/route/calculate|save`, `/incentives/evaluate|save`, `/kya/evaluate|save`, `/me/profile`, `/me/consents`, `/me/representations`, `/cabinet/dashboard`, `/projects`, `/application-types`, `/applications` (+ `validate` / `submit` / `withdraw`), `/cases` (+ `transition` / `assign` / `close` / `reopen` / `extend` / `extra-info` / `complaint` / `sla/tick`), `/evaluations`, `/documents`, `/notifications`, `/admin/*`, `/analytics/overview`.
 
 ---
 
 ## 2. Folder structure
 
-Proposed layout (not in the repo yet):
+Target layout for the ASP.NET backend (replaces the Express `server/src` + Prisma tree). `client/` is unchanged.
 
 ```text
 ASAN-INVEST/
@@ -69,47 +92,34 @@ ASAN-INVEST/
       components/                 # shared UI: bayraq, status, layout, forms
       lib/                        # API client, session, flags, copy
       styles/
-  server/                         # Express API — Backend API Specialist
-    src/
-      index.ts
-      app.ts
-      config/
-      middleware/                 # auth, roles, 2FA gate, validation, audit, errors
-      modules/                    # one folder per TZ module; owner writes here
-        auth/
-        profile/
-        portal/
-        route/
-        incentive/
-        kya/
-        cabinet/
-        projects/
-        applications/
-        evaluations/
-        cases/
-        workflow/
-        notifications/
-        admin/
-        analytics/
-      services/                   # TZ §21 shared services
-        rules/
-        auth/
-        documents/
-        compliance/
-        search/
-        audit/
-        notifications/
-        integrations/             # adapters only; no invented government clients
-          asanLogin/
-          email/
-          sms/
-          aiKya/
-      db/
-    prisma/
-      schema.prisma               # Database Specialist
-      migrations/
-      seed.ts
-  packages/shared/                # optional later: Zod enums (roles, statuses, flags)
+  server/                         # ASP.NET solution — Backend + Database Specialists
+    AsanInvest.sln
+    AsanInvest.Api/               # Web API host (controllers, middleware, Program.cs)
+      Controllers/                # one controller area per TZ module / docs/api.md route group
+        AuthController.cs
+        GuestSessionsController.cs
+        PortalController.cs
+        ToolsController.cs        # route, incentives, kya
+        ProfileController.cs
+        CabinetController.cs
+        ProjectsController.cs
+        ApplicationsController.cs
+        CasesController.cs
+        EvaluationsController.cs
+        DocumentsController.cs
+        NotificationsController.cs
+        AdminController.cs
+        AnalyticsController.cs
+        HealthController.cs
+      Middleware/
+      appsettings.json
+    AsanInvest.Application/       # use-cases, DTOs matching docs/api.md, FluentValidation
+    AsanInvest.Domain/            # entities, enums, workflow/KYA/route rules (no I/O)
+    AsanInvest.Infrastructure/    # EF Core, Npgsql, adapters
+      Persistence/                # DbContext, configurations, migrations, seed — Database Specialist
+      Integrations/               # asanLogin, email, sms, aiKya stubs — Backend
+    AsanInvest.Api.Tests/         # xUnit / WebApplicationFactory — QA + authors
+  packages/shared/                # optional later: OpenAPI client for the React app
 ```
 
 **Ownership:** see `AGENTS.md`. Do not add Phase 2 module folders (`ombudsman`, `aftercare`, `payments`) in Phase 1 except where TZ §25.1 requires a fallback (e.g. «Şikayət et» → nəzarətçi tapşırığı).
@@ -441,51 +451,52 @@ Qayda mühərriki, autentifikasiya, avtorizasiya, sənəd servisi, uyğunluq yox
 
 ## 5. Agent task lists (Phase 1 only)
 
-Agents do not write code until implementation is requested. When implementation starts, each agent works only in the folders named in `AGENTS.md` and only on Phase 1.
+Each agent works only in the folders named in `AGENTS.md` and only on Phase 1. Backend implementation is the ASP.NET port of the frozen `docs/api.md` contract.
 
 ### 5.1. Database Specialist
 
-Folders: `server/prisma/`, `server/src/db/`.
+Folders: `server/AsanInvest.Infrastructure/Persistence/`, EF Core entity configurations and migrations. May read `server/AsanInvest.Domain/` entities; does not add REST controllers.
 
-1. Author `schema.prisma` from TZ §4.3 objects in section 3 of this plan (English table names, TZ names in comments).
-2. Add supporting tables in §3.3 needed for İnzibatçılıq and guest sessions.
-3. Enums from the TZ only: identification levels, bayraqlar, project statuses (FR-PROJ-08), case internal statuses (TZ §14.1), investor-visible status mapping, representation authority, document source, notification channels, rule-set kinds.
-4. Constraints: Z-02 (application has project_id XOR profile_id, at least one); unique `applications.public_number`; unique `users.email`; 1:1 user↔profile; 1:1 application↔case at submit.
-5. `applications.snapshot` and `audit_records` are append-only from the application’s point of view (no update of snapshot; no update/delete of audit rows).
-6. Money as `NUMERIC`; never float. Currencies AZN / USD / EUR appear in ROUTE (FR-ROUTE-01).
+1. Map EF Core to the **existing** PostgreSQL tables from the Phase 1 schema (English snake_case, TZ names in comments). Preserve column names, enums, JSONB, `NUMERIC(18,2)`, and SQL checks already in the database (Z-02, snapshot/audit triggers).
+2. Replace Prisma as the migration tool with EF Core migrations. Do not create a second set of table names.
+3. Enums from the TZ only, matching current schema members: identification levels, bayraqlar, project statuses (FR-PROJ-08), case internal statuses (TZ §14.1), investor-visible status mapping, representation authority, document source, notification channels, rule-set kinds.
+4. Keep constraints: Z-02 (exactly one of `project_id`, `profile_id`); unique `applications.public_number`; unique `users.email`; 1:1 user↔profile; 1:1 application↔case at submit.
+5. `applications.snapshot` and `audit_records` remain append-only (no update of snapshot; no update/delete of audit rows).
+6. Money as `numeric(18,2)` / `decimal`; never float. Currencies AZN / USD / EUR (FR-ROUTE-01).
 7. Indexes for cabinet and case desk: applications by user/status, cases by assignee/due date/status, tasks by institution and due date, notifications by user unread.
-8. Seed: sysadmin user, Standart workflow statuses and transitions, sample classifications, sample procedures with bayraqlar, one KYA/incentive/route rule-set version, sample CMS pages for HOME/WHY/OPP/GUIDE/ABOUT, notification templates for FR-NOT-01 events that exist in Phase 1.
+8. Seed (EF or SQL): sysadmin user, Standart workflow statuses and transitions, sample classifications, sample procedures with bayraqlar, one KYA/incentive/route rule-set version, sample CMS pages for HOME/WHY/OPP/GUIDE/ABOUT, notification templates for FR-NOT-01 events that exist in Phase 1.
 9. Do **not** seed or migrate Ombudsman/Aftercare extra statuses (TZ §14.2) except a comment that they arrive in Phase 2.
-10. `.env.example`: `DATABASE_URL` only for values this agent owns. Do not invent government API keys.
+10. `.env.example`: `DATABASE_URL` (Npgsql connection string) only for values this agent owns. Do not invent government API keys.
 11. Document data-residency assumption: PostgreSQL host must be in Azerbaijan for production (NFR-01). Dev may use Docker locally.
 
 ### 5.2. Backend API Specialist
 
-Folders: `server/src/` except `prisma/` (may read schema, not rewrite it unilaterally).
+Folders: `server/AsanInvest.Api/`, `server/AsanInvest.Application/`, `server/AsanInvest.Domain/`, `server/AsanInvest.Infrastructure/Integrations/`. May read the EF model; does not rewrite migrations unilaterally. Implement the **same routes and JSON** as [`docs/api.md`](api.md) — do not invent a new URL scheme while porting off Express.
 
-1. Scaffold Express + TypeScript, `/api/v1`, health check, Zod validation, error shape, request ID, audit middleware.
-2. **Auth:** register/login/verify/logout/refresh/password reset (FR-AUTH-01, 03, 05). Session: httpOnly refresh cookie + access JWT. Identification level 1 on email verify.
-3. **ASAN Login / SİMA:** interface + stub that can attach FIN/VÖEN later (FR-AUTH-02). No live government client.
-4. **RBAC** (TZ §5, GİR-01…04): every route declares roles; institution_rep scoped by `institution_id`; investor scoped to self; never return internal case notes on investor DTOs.
-5. Internal roles: 2FA required (NFR-02).
-6. **Profile + representations** (FR-PROF-01…04) including version history and consent audit.
-7. Copy **guest session** answers into profile on register (FR-AUTH-04).
-8. **Rule engine** service: versioned evaluation for ROUTE, INC, KYA, EVAL routing, case assignment, flags (Z-06). Admin CRUD for rule sets (FR-ADM-07) without breaking old results (Z-05).
-9. **ROUTE / INC / KYA** public endpoints (guest) and save-to-cabinet (investor). KYA rejects unconfirmed SI parameters (FR-KYA-02). Structured form works without SI.
+1. Scaffold ASP.NET Core Web API (`net8.0` or current LTS), MapControllers / minimal hosting in `Program.cs`, `/api/v1` prefix, health checks, FluentValidation, `{ error: { code, message, details? } }` exception handler, request-id, audit. JSON: camelCase, enum strings as in Prisma, money as decimal strings. Listen on port 4000 in development.
+2. **Auth:** register/login/verify/logout/refresh/password reset (FR-AUTH-01, 03, 05) on the paths in `docs/api.md`. Session: httpOnly `refresh_token` cookie + access JWT. Identification level 1 on email verify. Keep `201` / `204` / 2FA challenge shapes from §1.1.
+3. **ASAN Login / SİMA:** interface + stub that can attach FIN/VÖEN later (FR-AUTH-02). No live government client. `POST /api/v1/auth/asan-login`.
+4. **RBAC** (TZ §5, GİR-01…04): every action declares roles; institution_rep scoped by `institutionId`; investor scoped to self; never return internal case notes on investor DTOs (`isInternal: true`).
+5. Internal roles: 2FA required (NFR-02); `POST /api/v1/auth/2fa/verify`.
+6. **Profile + representations** (FR-PROF-01…04) including version history and consent audit — `GET/PUT /me/profile`, `POST /me/consents`, `GET/POST /me/representations`.
+7. Copy **guest session** answers into profile on register (FR-AUTH-04) via `POST/PATCH /guest-sessions`.
+8. **Rule engine** in Domain/Application: versioned evaluation for ROUTE, INC, KYA, EVAL routing, case assignment, flags (Z-06). Admin CRUD for rule sets (FR-ADM-07) without breaking old results (Z-05).
+9. **ROUTE / INC / KYA** public endpoints (guest) and save-to-cabinet (investor) at `/route/calculate|save`, `/incentives/evaluate|save`, `/kya/evaluate|save`. KYA rejects unconfirmed SI parameters (FR-KYA-02). Structured form works without SI.
 10. **Compliance:** sanctions/PEP on first legally significant step for non-residents; store on user (FR-EVAL-01). Adapter for a list provider; stub with explicit “not configured” behaviour. Mismatch → polite stop + human contact (FR-EVAL-05), never an accusation.
 11. **Projects + stages** from selected KYA result (FR-PROJ-01, 02). Stage status computed from case (TZ §10.2). Size category from rule threshold (FR-PROJ-05).
 12. **Applications:** dynamic fields from `application_types`, draft, validate, submit with number + snapshot + case creation (FR-APP-01…06). Withdrawal with reason (FR-APP-05). Capital-step blocker if incentive preview missing (FR-APP-07) — even if payments are not in Phase 1, do not open a capital step that violates the order.
 13. **Evaluations queue** and evaluator opinions (FR-EVAL-02…04).
-14. **Cases + tasks:** assignment rules, parallel/sequential tasks, extra-info requests (WF-05), close only when mandatory result fields and all tasks are done (FR-CASE-06), supervisor re-open (FR-CASE-07).
+14. **Cases + tasks:** assignment rules, parallel/sequential tasks, extra-info requests (WF-05), close only when mandatory result fields and all tasks are done (FR-CASE-06), supervisor re-open (FR-CASE-07). Paths: `/cases/:id/transition|assign|close|reopen|extend|extra-info|complaint`, `/cases/sla/tick`.
 15. **Workflow engine:** TZ §14.1 transitions, working-day SLAs (WF-01), pause behaviour configurable (WF-02), warn and escalate (WF-03), supervisor-only extend/reassign (WF-04), completion payload (WF-06). Phase 1 «Şikayət et»: supervisor task + external complaint URL, not Ombudsman workflow.
 16. **Cabinet read APIs** aggregate; do not duplicate status (FR-CAB-01…06, Z-03).
 17. **Documents + messages** services.
 18. **Notifications:** emit FR-NOT-01 events; templates by role/locale/channel; log each send attempt; no PII in email/SMS body (FR-NOT-03, 06).
-19. **Admin APIs:** FR-ADM-01…09, 11 (not 10 payments/partners product). CMS lifecycle draft → approve → publish → archive.
+19. **Admin APIs:** FR-ADM-01…09, 11 (not 10 payments/partners product). CMS lifecycle draft → approve → publish → archive. Keep `/admin/*` as in the Express app.
 20. **Analytics read APIs** for internal dashboards (FR-REP-01…08, 11). No public unapproved KPIs (FR-HOME-04, FR-REP-09 is Phase 2).
-21. **Company registration:** single config URL to DVX e-service; no REG document-generation API.
+21. **Company registration:** `GET /company-registration` returns the configured DVX URL; no REG document-generation API.
 22. Rate-limit auth and public forms; bot protection hook on open forms (NFR-02).
 23. Do not implement PAY, OMB, AFT modules, DVX submit, or bank KYC packet APIs.
+24. Do not keep adding Express routes. Once the ASP.NET host serves `/api/v1`, retire `server/src` rather than running two APIs.
 
 ### 5.3. Frontend Specialist
 
@@ -509,7 +520,7 @@ Folders: `client/`.
 
 ### 5.4. QA Security Reviewer
 
-Folders: tests under `client/` and `server/` as agreed; reviews all diffs. Does not own product features.
+Folders: `server/AsanInvest.Api.Tests/` (xUnit) and frontend tests under `client/` as agreed; reviews all diffs. Does not own product features. Contract tests must hit the paths and JSON in [`docs/api.md`](api.md), independent of Express vs ASP.NET.
 
 1. Write a Phase 1 test matrix from TZ: guest value in 60 seconds (portal); resident vs non-resident (TZ §5.2 participants) through register → KYA save → project → application → case → institution task → extra-info → complete.
 2. Assert Z-01…Z-06, GİR-01…04, WF-01…06 Phase 1 fallback for «Şikayət et».
@@ -534,4 +545,5 @@ Folders: tests under `client/` and `server/` as agreed; reviews all diffs. Does 
 | --- | --- |
 | Based on | ASAN_Invest_TZ_v4.0.md |
 | Scope | Mərhələ 1 only (§25.1) |
-| Code | Not started; this plan and `AGENTS.md` only |
+| HTTP contract | [`docs/api.md`](api.md) (Phase 1 backend PR) — do not break |
+| Backend runtime | ASP.NET Core Web API (C#) + EF Core + PostgreSQL |
