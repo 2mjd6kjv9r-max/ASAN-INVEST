@@ -776,7 +776,7 @@ async function seedProcedures() {
       flag: Flag.PLANNED,
       expectedDurationDays: null,
       applicationTypeId: eResidencyType.id,
-      integrationCode: "e_nonresident",
+      integrationCode: "e_residency",
       legalBasis: "TZ §22.1 / §25.1. GRANTED only after legislation via back-office, never a stub.",
       sortOrder: 140,
     },

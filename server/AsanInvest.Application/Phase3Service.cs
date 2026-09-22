@@ -87,9 +87,9 @@ public sealed class Phase3Service
         var outcome = await _eNonresident.CompleteAsync(user.Id, assertion, ct);
         LogIntegration("e_nonresident", "outbound", "user", user.Id.ToString(), outcome);
         var row = await _db.Users.FirstAsync(u => u.Id == user.Id, ct);
-        if (outcome.Available && _settings.ENonresidentEnabled)
+        if (Phase3Integrity.MayUpgradeENonresident(_settings.ENonresidentEnabled, outcome.Available, assertion, outcome.ProviderRef))
         {
-            // Only a real adapter may issue a virtual FİN and raise LEGAL (TZ §7.2). Stubs never take this branch.
+            // Only a real adapter with a non-empty assertion and provider ref may issue a virtual FİN (TZ §7.2).
             row.VirtualFin = outcome.ProviderRef;
             row.AuthProvider = AuthProvider.E_NONRESIDENT;
             if (row.IdentificationLevel != IdentificationLevel.LEGAL)
@@ -153,7 +153,7 @@ public sealed class Phase3Service
             flag = Flag.PLANNED,
             legalStatus = "not_in_force",
             grantAvailable = false,
-            applyEnabled = false,
+            applyEnabled = true,
             title = page is null ? "e-Rezidentlik" : NamesFor(page.Title, "az"),
             body = page is null
                 ? "e-Rezidentlik qanunvericilikdə hələ qüvvədə deyil. Maraq bildirişi mümkün olsa da, status GRANTED stub ilə verilmir."
@@ -168,6 +168,10 @@ public sealed class Phase3Service
         var user = await _db.Users.Include(u => u.Profile).FirstOrDefaultAsync(u => u.Id == userId, ct)
             ?? throw AppException.NotFound("User not found");
         if (user.Profile is null) throw AppException.NotFound("Profile not found");
+        if (user.Profile.EResidencyStatus == EResidencyStatus.GRANTED)
+            throw AppException.Conflict("e-Residency is already granted for this profile", "ALREADY_GRANTED");
+        if (!Phase3Integrity.MayGrantEResidency(_settings.EResidencyEnabled, user.Profile.EResidencyStatus))
+            throw AppException.BadRequest("INTEREST_REQUIRED", "Grant only after an e-residency interest application (APPLIED or PLAN_PENDING).");
         user.Profile.EResidencyStatus = EResidencyStatus.GRANTED;
         Audit(actor.Id, "eresidency.granted", "profile", user.Profile.Id.ToString(), new { userId });
         Notify(user.Id, "ERESIDENCY_GRANTED", "e-Residency status was recorded by an administrator after legislation.", new { });
@@ -182,9 +186,12 @@ public sealed class Phase3Service
         if (procedure.Flag != from)
             throw AppException.Conflict($"Current flag is {procedure.Flag}, not {from}", "FLAG_MISMATCH");
         procedure.Flag = to;
-        var openStages = await _db.Stages.Include(s => s.Project)
-            .Where(s => s.ProcedureId == procedure.Id && s.ActualCompletedAt == null && !s.IsNotApplicable)
+        var candidates = await _db.Stages.Include(s => s.Project).Include(s => s.Application)!.ThenInclude(a => a!.Case)
+            .Where(s => s.ProcedureId == procedure.Id)
             .ToListAsync(ct);
+        var openStages = candidates
+            .Where(s => FlagSummary.IsOpenForFlagRefresh(s.ActualCompletedAt, s.IsNotApplicable, s.Application?.Case?.InternalStatus))
+            .ToList();
         foreach (var stage in openStages)
             stage.Flag = to;
 

@@ -41,7 +41,7 @@ public sealed class HttpContractTests : IClassFixture<ApiFactory>
         Assert.Equal(HttpStatusCode.OK, res.StatusCode);
         using var body = JsonDocument.Parse(await res.Content.ReadAsStringAsync());
         Assert.Equal("ok", body.RootElement.GetProperty("data").GetProperty("status").GetString());
-        Assert.Equal(1, body.RootElement.GetProperty("data").GetProperty("phase").GetInt32());
+        Assert.Equal(3, body.RootElement.GetProperty("data").GetProperty("phase").GetInt32());
     }
 
     [Fact]
@@ -313,6 +313,31 @@ public sealed class DomainRuleTests
         Assert.Equal(1, summary.PhysicalContacts);
         Assert.True(FlagSummary.IsOpenStage(null, false));
         Assert.False(FlagSummary.IsOpenStage(DateTimeOffset.UtcNow, false));
+        Assert.True(FlagSummary.IsOpenForFlagRefresh(null, false, CaseInternalStatus.REGISTERED));
+        Assert.False(FlagSummary.IsOpenForFlagRefresh(null, false, CaseInternalStatus.COMPLETED));
+        Assert.False(FlagSummary.IsOpenForFlagRefresh(null, false, CaseInternalStatus.REJECTED));
+        Assert.False(FlagSummary.IsOpenForFlagRefresh(DateTimeOffset.UtcNow, false, null));
+    }
+
+    [Fact]
+    public void Phase3_integrity_blocks_legal_and_granted_without_live_adapter_or_interest()
+    {
+        Assert.False(Phase3Integrity.MayUpgradeENonresident(false, true, "assertion", "VF-1"));
+        Assert.False(Phase3Integrity.MayUpgradeENonresident(true, false, "assertion", "VF-1"));
+        Assert.False(Phase3Integrity.MayUpgradeENonresident(true, true, "", "VF-1"));
+        Assert.False(Phase3Integrity.MayUpgradeENonresident(true, true, "assertion", null));
+        Assert.True(Phase3Integrity.MayUpgradeENonresident(true, true, "signed-assertion", "VF-1"));
+
+        Assert.False(Phase3Integrity.MayGrantEResidency(false, EResidencyStatus.PLAN_PENDING));
+        Assert.False(Phase3Integrity.MayGrantEResidency(true, EResidencyStatus.NONE));
+        Assert.False(Phase3Integrity.MayGrantEResidency(true, EResidencyStatus.GRANTED));
+        Assert.True(Phase3Integrity.MayGrantEResidency(true, EResidencyStatus.PLAN_PENDING));
+        Assert.True(Phase3Integrity.MayGrantEResidency(true, EResidencyStatus.APPLIED));
+
+        using var empty = JsonDocument.Parse("""{"ubo":"","sourceOfFunds":"","fatcaCrs":"","activity":""}""");
+        using var filled = JsonDocument.Parse("""{"ubo":"Alice","sourceOfFunds":"salary"}""");
+        Assert.False(Phase3Integrity.HasKycContent(empty.RootElement));
+        Assert.True(Phase3Integrity.HasKycContent(filled.RootElement));
     }
 
     [Fact]

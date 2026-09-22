@@ -178,11 +178,16 @@ export function ApplicationNewPage() {
   const [typeCode, setTypeCode] = useState(params.get('typeCode') || 'consultation')
   const [error, setError] = useState<string | null>(null)
   const [needsLevel2, setNeedsLevel2] = useState(false)
+  const allowedCodes = types.data?.map((item) => item.code) ?? []
   return (
     <form
       className="card max-w-xl space-y-4"
       onSubmit={(e) => {
         e.preventDefault()
+        if (allowedCodes.length > 0 && !allowedCodes.includes(typeCode)) {
+          setError(t('common.error'))
+          return
+        }
         void api
           .createApplication({
             typeCode,

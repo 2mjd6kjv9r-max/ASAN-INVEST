@@ -7,7 +7,7 @@ import { applicationTypeForProcedure, integrationCodeForProcedure, isBankProcedu
 import type { BankChannel, BankSubmission, Classification, Flag, IntegrationStatus, ProjectDetail, ProjectStage } from '@/lib/types'
 import { pickName } from '@/lib/types'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 export function PassportStages({ project }: { project: ProjectDetail }) {
@@ -51,7 +51,7 @@ function StagePlanPanel({ projectId, stage }: { projectId: string; stage: Projec
   const code = stage.procedure.code
   const integration = integrationCodeForProcedure(code)
   const typeCode = applicationTypeForProcedure(code)
-  const canDraft = stage.displayStatus !== 'COMPLETED' && stage.displayStatus !== 'NOT_APPLICABLE'
+  const canDraft = stage.displayStatus === 'OPEN'
   const draftTo = `/cabinet/applications/new?stageId=${stage.id}&projectId=${projectId}&source=PASSPORT_STAGE&typeCode=${typeCode}`
 
   return (
@@ -61,8 +61,8 @@ function StagePlanPanel({ projectId, stage }: { projectId: string; stage: Projec
           {stage.flag === 'PLANNED' ? t('phase3.draftPlan') : t('cabinet.newApplication')}
         </ButtonLink>
       ) : null}
-      {integration ? <IntegrationPanel projectId={projectId} stageId={stage.id} code={integration} flag={stage.flag} /> : null}
-      {isBankProcedure(code) ? <BankStep projectId={projectId} /> : null}
+      {integration && stage.displayStatus === 'OPEN' ? <IntegrationPanel projectId={projectId} stageId={stage.id} code={integration} flag={stage.flag} /> : null}
+      {isBankProcedure(code) ? <BankStep projectId={projectId} canSend={stage.displayStatus === 'OPEN'} /> : null}
       {isZoningProcedure(code) ? (
         <div className="space-y-3">
           <div className="zoning-pin" aria-hidden="true">
@@ -119,7 +119,7 @@ function IntegrationPanel({
   )
 }
 
-function BankStep({ projectId }: { projectId: string }) {
+function BankStep({ projectId, canSend }: { projectId: string; canSend: boolean }) {
   const { t, i18n } = useTranslation()
   const client = useQueryClient()
   const banks = useQuery({
@@ -130,16 +130,32 @@ function BankStep({ projectId }: { projectId: string }) {
     queryKey: ['bank-submissions', projectId],
     queryFn: () => api.bankSubmissions(projectId) as Promise<BankSubmission[]>,
   })
+  const savedPacket = useQuery({
+    queryKey: ['kyc-packet'],
+    queryFn: () => api.kycPacket() as Promise<{ packet?: unknown }>,
+  })
   const [channel, setChannel] = useState<BankChannel>('PHYSICAL_SIGNATURE')
   const [selected, setSelected] = useState<string[]>([])
   const [packet, setPacket] = useState('{"ubo":"","sourceOfFunds":"","fatcaCrs":"","activity":""}')
   const [error, setError] = useState<string | null>(null)
 
+  useEffect(() => {
+    const current = savedPacket.data?.packet
+    if (current && typeof current === 'object') setPacket(JSON.stringify(current, null, 2))
+  }, [savedPacket.data])
+
   const pilots = (banks.data ?? []).filter((row) => row.code.startsWith('pilot-bank'))
 
   const send = useMutation({
     mutationFn: async () => {
-      await api.putKycPacket(JSON.parse(packet) as unknown)
+      let parsed: unknown
+      try {
+        parsed = JSON.parse(packet) as unknown
+      } catch {
+        throw new Error(t('phase3.kycInvalid'))
+      }
+      if (!packetHasContent(parsed)) throw new Error(t('phase3.kycEmpty'))
+      await api.putKycPacket(parsed)
       return api.createBankSubmissions(projectId, { bankInstitutionIds: selected, channel }) as Promise<{
         flag: Flag
         channel: BankChannel
@@ -149,8 +165,9 @@ function BankStep({ projectId }: { projectId: string }) {
     onSuccess: () => {
       setError(null)
       void client.invalidateQueries({ queryKey: ['bank-submissions', projectId] })
+      void client.invalidateQueries({ queryKey: ['kyc-packet'] })
     },
-    onError: (err) => setError(isApiError(err) ? err.message : t('common.error')),
+    onError: (err) => setError(isApiError(err) ? err.message : err instanceof Error ? err.message : t('common.error')),
   })
 
   function toggle(id: string) {
@@ -184,7 +201,7 @@ function BankStep({ projectId }: { projectId: string }) {
         <Textarea value={packet} onChange={(e) => setPacket(e.target.value)} />
       </Field>
       {error ? <Alert tone="warning">{error}</Alert> : null}
-      <Button type="button" loading={send.isPending} disabled={selected.length === 0} onClick={() => send.mutate()}>
+      <Button type="button" loading={send.isPending} disabled={!canSend || selected.length === 0} onClick={() => send.mutate()}>
         {t('phase3.sendBank')}
       </Button>
       {existing.data && existing.data.length > 0 ? (
@@ -201,4 +218,13 @@ function BankStep({ projectId }: { projectId: string }) {
       ) : null}
     </div>
   )
+}
+
+function packetHasContent(value: unknown): boolean {
+  if (value == null) return false
+  if (typeof value === 'string') return value.trim().length > 0
+  if (typeof value === 'number' || typeof value === 'boolean') return true
+  if (Array.isArray(value)) return value.some(packetHasContent)
+  if (typeof value === 'object') return Object.values(value as Record<string, unknown>).some(packetHasContent)
+  return false
 }

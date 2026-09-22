@@ -8,12 +8,14 @@ import { useTranslation } from 'react-i18next'
 export function Level2Gate({ user, compact = false }: { user?: User | null; compact?: boolean }) {
   const { t } = useTranslation()
   const [outcome, setOutcome] = useState<HonestyOutcome | null>(null)
-  const [pending, setPending] = useState(false)
+  const [pending, setPending] = useState<string | null>(null)
 
-  async function waitForEsign() {
-    setPending(true)
+  async function wait(channel: 'asan' | 'enonresident') {
+    setPending(channel)
     try {
-      const data = (await api.startENonresident()) as HonestyOutcome
+      const data = (
+        channel === 'asan' ? await api.asanLogin() : await api.startENonresident()
+      ) as HonestyOutcome
       setOutcome({
         available: Boolean(data.available),
         flag: data.flag || 'PLANNED',
@@ -28,7 +30,7 @@ export function Level2Gate({ user, compact = false }: { user?: User | null; comp
         message: isApiError(err) ? err.message : t('common.error'),
       })
     } finally {
-      setPending(false)
+      setPending(null)
     }
   }
 
@@ -40,9 +42,14 @@ export function Level2Gate({ user, compact = false }: { user?: User | null; comp
             {t('phase3.representative')}
           </ButtonLink>
           {user ? (
-            <Button type="button" variant="secondary" loading={pending} onClick={() => void waitForEsign()}>
-              {t('phase3.waitEsign')}
-            </Button>
+            <>
+              <Button type="button" variant="secondary" loading={pending === 'asan'} onClick={() => void wait('asan')}>
+                {t('phase3.waitAsan')}
+              </Button>
+              <Button type="button" variant="secondary" loading={pending === 'enonresident'} onClick={() => void wait('enonresident')}>
+                {t('phase3.waitEsign')}
+              </Button>
+            </>
           ) : (
             <ButtonLink to="/login" variant="secondary">
               {t('phase3.waitEsign')}

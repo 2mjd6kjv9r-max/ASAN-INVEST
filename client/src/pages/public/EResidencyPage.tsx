@@ -29,7 +29,7 @@ export function EResidencyPage() {
     flag: 'PLANNED' as const,
     legalStatus: 'not_in_force',
     grantAvailable: false,
-    applyEnabled: false,
+    applyEnabled: true,
     title: t('phase3.eResidencyTitle'),
     body: t('phase3.eResidencyInterest'),
   }
@@ -46,11 +46,12 @@ export function EResidencyPage() {
           <PlanNotice available={data.applyEnabled} flag={data.flag} message={t('phase3.eResidencyInterest')} />
         </div>
 
-      {user ? (
+      {user && data.applyEnabled ? (
         <form
           className="card space-y-4"
           onSubmit={(e) => {
             e.preventDefault()
+            if (data.grantAvailable) return
             apply.mutate()
           }}
         >
@@ -61,7 +62,7 @@ export function EResidencyPage() {
           {apply.isError ? (
             <Alert tone="warning">{isApiError(apply.error) ? apply.error.message : t('common.error')}</Alert>
           ) : null}
-          <Button type="submit" loading={apply.isPending}>
+          <Button type="submit" loading={apply.isPending} disabled={data.grantAvailable}>
             {t('phase3.expressInterest')}
           </Button>
         </form>

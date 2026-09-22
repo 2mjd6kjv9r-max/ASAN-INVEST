@@ -164,5 +164,5 @@ public sealed class HealthController : ControllerBase
     [HttpGet("/health")]
     [HttpGet("/api/v1/health")]
     [AllowAnonymous]
-    public IActionResult Get() => Ok(new { data = new { status = "ok", service = "asan-invest-api", phase = 1 } });
+    public IActionResult Get() => Ok(new { data = new { status = "ok", service = "asan-invest-api", phase = 3 } });
 }

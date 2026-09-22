@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 namespace AsanInvest.Domain;
 
 public static class StatusMapping
@@ -195,6 +197,44 @@ public static class FlagSummary
 
     public static bool IsOpenStage(DateTimeOffset? actualCompletedAt, bool notApplicable) =>
         actualCompletedAt is null && !notApplicable;
+
+    public static bool IsTerminalCase(CaseInternalStatus? status) =>
+        status is CaseInternalStatus.COMPLETED or CaseInternalStatus.REJECTED
+            or CaseInternalStatus.WITHDRAWN or CaseInternalStatus.ARCHIVED;
+
+    /// FR-FLAG-03 — refresh open passport stages only. Case COMPLETED counts even when ActualCompletedAt was never written.
+    public static bool IsOpenForFlagRefresh(DateTimeOffset? actualCompletedAt, bool notApplicable, CaseInternalStatus? caseStatus) =>
+        !notApplicable && actualCompletedAt is null && !IsTerminalCase(caseStatus);
+}
+
+/// PLAN-PHASE3 §1.3 / §4.2.5 — PLAN adapters must not mint LEGAL / GRANTED.
+public static class Phase3Integrity
+{
+    public static bool MayUpgradeENonresident(bool enabled, bool adapterAvailable, string? assertion, string? providerRef) =>
+        enabled
+        && adapterAvailable
+        && !string.IsNullOrWhiteSpace(assertion)
+        && !string.IsNullOrWhiteSpace(providerRef);
+
+    public static bool MayGrantEResidency(bool legislationEnabled, EResidencyStatus current) =>
+        legislationEnabled && current is EResidencyStatus.APPLIED or EResidencyStatus.PLAN_PENDING;
+
+    public static bool HasKycContent(JsonElement packet)
+    {
+        if (packet.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null) return false;
+        if (packet.ValueKind == JsonValueKind.String) return !string.IsNullOrWhiteSpace(packet.GetString());
+        if (packet.ValueKind is JsonValueKind.Number or JsonValueKind.True or JsonValueKind.False) return true;
+        if (packet.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in packet.EnumerateArray())
+                if (HasKycContent(item)) return true;
+            return false;
+        }
+        if (packet.ValueKind != JsonValueKind.Object) return false;
+        foreach (var property in packet.EnumerateObject())
+            if (HasKycContent(property.Value)) return true;
+        return false;
+    }
 }
 
 public static class FinMask
