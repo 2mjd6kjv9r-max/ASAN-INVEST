@@ -1765,8 +1765,16 @@ body.nav-open {
     padding: 6px 12px;
     gap: 8px;
   }
-  .topnav-register {
+  .topnav a.topnav-register {
     display: none;
+  }
+  .logo {
+    min-height: 44px;
+  }
+  .auth-card a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
   }
   .lang-slot .lang-switch button {
     min-width: 44px;
