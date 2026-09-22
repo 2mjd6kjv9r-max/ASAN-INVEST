@@ -45,7 +45,7 @@ export function IncentivePage() {
       <PageHeader title={t('inc.title')} subtitle={t('inc.subtitle')} />
       {error ? <Alert tone="error">{error}</Alert> : null}
       <form
-        className="space-y-4 rounded-sm border border-line bg-white p-5"
+        className="card space-y-4"
         onSubmit={(e) => {
           e.preventDefault()
           evaluate.mutate()
@@ -91,11 +91,11 @@ export function IncentivePage() {
             ))}
           </Select>
         </Field>
-        <label className="flex items-center gap-2 text-sm">
+        <label className="ck">
           <input type="checkbox" checked={form.inAgropark} onChange={(e) => setForm((f) => ({ ...f, inAgropark: e.target.checked }))} />
           {t('inc.agro')}
         </label>
-        <label className="flex items-center gap-2 text-sm">
+        <label className="ck">
           <input type="checkbox" checked={form.inIndustrialPark} onChange={(e) => setForm((f) => ({ ...f, inIndustrialPark: e.target.checked }))} />
           {t('inc.industrial')}
         </label>
@@ -104,8 +104,10 @@ export function IncentivePage() {
         </Button>
       </form>
       {result ? (
-        <section className="space-y-3 rounded-sm border border-line bg-white p-5">
-          <p className="text-lg font-semibold text-navy">{t(`inc.${result.outcome}`)}</p>
+        <section className="card space-y-3">
+          <p className="text-lg font-semibold" style={{ color: 'var(--navy)' }}>
+            {t(`inc.${result.outcome}`)}
+          </p>
           <p>{i18n.language === 'az' ? result.explanationAz : result.explanationEn}</p>
           <p className="text-sm">
             <strong>{t('inc.legal')}:</strong> {result.legalCitation}

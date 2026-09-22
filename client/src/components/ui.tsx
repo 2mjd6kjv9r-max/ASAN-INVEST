@@ -4,11 +4,11 @@ import { useTranslation } from 'react-i18next'
 import { Link, type LinkProps } from 'react-router-dom'
 
 const buttonClass = {
-  primary:
-    'bg-navy text-white hover:bg-navy-800 disabled:opacity-50 border border-navy',
-  secondary: 'bg-white text-navy border border-navy hover:bg-navy-50 disabled:opacity-50',
-  ghost: 'bg-transparent text-navy hover:bg-navy-50 disabled:opacity-50',
-  danger: 'bg-white text-red-800 border border-red-800 hover:bg-red-50 disabled:opacity-50',
+  primary: 'btn btn-p',
+  secondary: 'btn btn-s',
+  ghost: 'btn btn-t',
+  danger: 'btn btn-d',
+  hero: 'btn btn-ghost',
 }
 
 export function Button({
@@ -19,12 +19,7 @@ export function Button({
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: keyof typeof buttonClass; loading?: boolean }) {
   return (
-    <button
-      className={cn('inline-flex items-center justify-center gap-2 rounded-sm px-4 py-2 text-sm font-semibold', buttonClass[variant], className)}
-      disabled={props.disabled || loading}
-      aria-busy={loading || undefined}
-      {...props}
-    >
+    <button className={cn(buttonClass[variant], className)} disabled={props.disabled || loading} aria-busy={loading || undefined} {...props}>
       {children}
     </button>
   )
@@ -35,7 +30,7 @@ export function ButtonLink({
   className,
   ...props
 }: LinkProps & { variant?: keyof typeof buttonClass }) {
-  return <Link className={cn('inline-flex items-center justify-center gap-2 rounded-sm px-4 py-2 text-sm font-semibold no-underline', buttonClass[variant], className)} {...props} />
+  return <Link className={cn(buttonClass[variant], 'no-underline', className)} {...props} />
 }
 
 export function Field({
@@ -51,11 +46,11 @@ export function Field({
 }) {
   return (
     <label className="block space-y-1.5">
-      <span className="block text-sm font-medium text-navy">{label}</span>
+      <span className="label">{label}</span>
       {children}
-      {hint ? <span className="block text-sm text-muted">{hint}</span> : null}
+      {hint ? <span className="cap block">{hint}</span> : null}
       {error ? (
-        <span role="alert" className="block text-sm text-red-800">
+        <span role="alert" className="err-msg">
           {error}
         </span>
       ) : null}
@@ -63,18 +58,16 @@ export function Field({
   )
 }
 
-const control = 'w-full rounded-sm border border-line bg-white px-3 py-2 text-ink'
-
 export function Input(props: InputHTMLAttributes<HTMLInputElement>) {
-  return <input className={cn(control, props.className)} {...props} />
+  return <input className={cn('inp', props.className)} {...props} />
 }
 
 export function Select(props: SelectHTMLAttributes<HTMLSelectElement>) {
-  return <select className={cn(control, props.className)} {...props} />
+  return <select className={cn('inp', props.className)} {...props} />
 }
 
 export function Textarea(props: TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return <textarea className={cn(control, 'min-h-28', props.className)} {...props} />
+  return <textarea className={cn('inp', props.className)} {...props} />
 }
 
 export function Alert({
@@ -85,13 +78,20 @@ export function Alert({
   children: ReactNode
 }) {
   const map = {
-    info: 'border-navy-100 bg-navy-50 text-navy',
-    error: 'border-red-200 bg-red-50 text-red-900',
-    warning: 'border-amber-200 bg-amber-50 text-amber-950',
-    success: 'border-emerald-200 bg-emerald-50 text-emerald-900',
+    info: 'border-l-[3px] border-[var(--ink-500)] bg-[var(--info-bg)] text-[var(--text)]',
+    error: 'border-l-[3px] border-[var(--danger)] bg-[var(--danger-bg)] text-[var(--text)]',
+    warning: 'warn',
+    success: 'border-l-[3px] border-[var(--accent)] bg-[var(--accent-bg)] text-[var(--text)]',
+  }
+  if (tone === 'warning') {
+    return (
+      <div role="status" className="warn">
+        <div>{children}</div>
+      </div>
+    )
   }
   return (
-    <div role="status" className={cn('rounded-sm border px-3 py-2 text-sm', map[tone])}>
+    <div role="status" className={cn('rounded-lg px-4 py-3 text-sm', map[tone])}>
       {children}
     </div>
   )
@@ -99,9 +99,12 @@ export function Alert({
 
 export function EmptyState({ title, body, action }: { title: string; body?: string; action?: ReactNode }) {
   return (
-    <div className="rounded-sm border border-dashed border-line bg-white px-6 py-10 text-center">
-      <p className="font-medium text-navy">{title}</p>
-      {body ? <p className="mt-1 text-sm text-muted">{body}</p> : null}
+    <div className="card card-2 empty">
+      <div className="ic" aria-hidden="true">
+        ▢
+      </div>
+      <div className="t">{title}</div>
+      {body ? <p>{body}</p> : null}
       {action ? <div className="mt-4">{action}</div> : null}
     </div>
   )
@@ -110,10 +113,10 @@ export function EmptyState({ title, body, action }: { title: string; body?: stri
 export function ErrorState({ message, onRetry }: { message: string; onRetry?: () => void }) {
   const { t } = useTranslation()
   return (
-    <div role="alert" className="rounded-sm border border-red-200 bg-red-50 px-4 py-3">
-      <p className="text-sm text-red-900">{message}</p>
+    <div role="alert" className="rounded-lg border-l-[3px] border-[var(--danger)] bg-[var(--danger-bg)] px-4 py-3">
+      <p className="text-sm">{message}</p>
       {onRetry ? (
-        <button type="button" className="mt-2 text-sm font-semibold text-navy underline" onClick={onRetry}>
+        <button type="button" className="btn btn-t mt-2 px-0" onClick={onRetry}>
           {t('common.retry')}
         </button>
       ) : null}
@@ -122,14 +125,35 @@ export function ErrorState({ message, onRetry }: { message: string; onRetry?: ()
 }
 
 export function Skeleton({ className }: { className?: string }) {
-  return <div className={cn('animate-pulse rounded-sm bg-navy-100', className)} aria-hidden="true" />
+  return <div className={cn('sk', className)} aria-hidden="true" />
 }
 
-export function PageHeader({ title, subtitle }: { title: string; subtitle?: string }) {
+export function PageHeader({ title, subtitle, action }: { title: string; subtitle?: string; action?: ReactNode }) {
   return (
-    <header className="mb-6 space-y-2">
-      <h1 className="text-2xl font-semibold sm:text-3xl">{title}</h1>
-      {subtitle ? <p className="max-w-3xl text-muted">{subtitle}</p> : null}
+    <header className="pghead">
+      <div className="space-y-2">
+        <h1>{title}</h1>
+        {subtitle ? <p className="max-w-3xl muted">{subtitle}</p> : null}
+      </div>
+      {action}
     </header>
+  )
+}
+
+export function Card({ className, children }: { className?: string; children: ReactNode }) {
+  return <div className={cn('card', className)}>{children}</div>
+}
+
+export function Kpi({ label, value, hint }: { label: string; value: string; hint?: string }) {
+  return (
+    <div className="card kpi hover-lift">
+      <div className="label" style={{ marginBottom: 10 }}>
+        {label}
+      </div>
+      <div className="row" style={{ alignItems: 'baseline', gap: 8 }}>
+        <span className="v">{value}</span>
+        {hint ? <span className="cap">{hint}</span> : null}
+      </div>
+    </div>
   )
 }

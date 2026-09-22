@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { FlagBadge } from '@/components/FlagBadge'
 import { StatusBadge } from '@/components/StatusBadge'
-import { Alert, Button, ButtonLink, EmptyState, ErrorState, Field, Input, PageHeader, Select, Skeleton, Textarea } from '@/components/ui'
+import { Alert, Button, ButtonLink, EmptyState, ErrorState, Field, Input, Kpi, PageHeader, Select, Skeleton, Textarea } from '@/components/ui'
 import { api, isApiError } from '@/lib/api'
 import type { ApplicationDto, ApplicationType, CabinetDashboard, DocumentDto, NotificationDto, ProjectDetail, ProjectListItem, Representation, User } from '@/lib/types'
 import { pickName } from '@/lib/types'
@@ -25,10 +25,14 @@ export function CabinetHomePage() {
   return (
     <div className="space-y-6">
       <PageHeader title={t('cabinet.next')} />
-      <section className="rounded-sm border border-navy bg-white p-5">
-        <p className="text-sm text-muted">{data.nextStep.projectName}</p>
-        <h2 className="text-xl">{data.nextStep.title}</h2>
-        <p>{data.nextStep.action}</p>
+      <div className="kpi-grid" style={{ marginBottom: 8, gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' }}>
+        <Kpi label={t('cabinet.applications')} value={String(data.applications.length)} />
+        <Kpi label={t('status.WAITING_YOUR_RESPONSE')} value={String(grouped.get('WAITING_YOUR_RESPONSE')?.length ?? 0)} />
+      </div>
+      <section className="card">
+        <p className="cap">{data.nextStep.projectName}</p>
+        <h2 style={{ marginTop: 4 }}>{data.nextStep.title}</h2>
+        <p style={{ marginTop: 8 }}>{data.nextStep.action}</p>
       </section>
       <section>
         <div className="mb-3 flex items-center justify-between">
@@ -42,10 +46,10 @@ export function CabinetHomePage() {
         {[...grouped.entries()].map(([status, items]) => (
           <div key={status} className="mb-4">
             <StatusBadge status={status} />
-            <ul className="mt-2 divide-y divide-line rounded-sm border border-line bg-white">
+            <ul className="tbl-wrap mt-2">
               {items.map((item) => (
-                <li key={item.id} className="px-3 py-2">
-                  <Link to={`/cabinet/applications/${item.id}`} className="text-navy">
+                <li key={item.id} className="px-4 py-3" style={{ borderBottom: '1px solid var(--line)' }}>
+                  <Link to={`/cabinet/applications/${item.id}`}>
                     {item.publicNumber || item.id} · {item.type}
                   </Link>
                 </li>
@@ -63,16 +67,16 @@ export function ProjectsPage() {
   const query = useQuery({ queryKey: ['projects'], queryFn: () => api.projects() as Promise<ProjectListItem[]> })
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <PageHeader title={t('cabinet.projects')} />
-        <ButtonLink to="/cabinet/projects/new">{t('cabinet.newProject')}</ButtonLink>
-      </div>
+      <PageHeader
+        title={t('cabinet.projects')}
+        action={<ButtonLink to="/cabinet/projects/new">{t('cabinet.newProject')}</ButtonLink>}
+      />
       {query.isLoading ? <Skeleton className="h-32" /> : null}
       {query.data?.length === 0 ? <EmptyState title={t('common.empty')} /> : null}
       <ul className="space-y-3">
         {query.data?.map((project) => (
-          <li key={project.id} className="rounded-sm border border-line bg-white p-4">
-            <Link to={`/cabinet/projects/${project.id}`} className="font-semibold text-navy">
+          <li key={project.id} className="card hover-lift">
+            <Link to={`/cabinet/projects/${project.id}`} className="font-semibold">
               {project.name}
             </Link>
             <p className="text-sm text-muted">
@@ -92,7 +96,7 @@ export function ProjectNewPage() {
   const [error, setError] = useState<string | null>(null)
   return (
     <form
-      className="max-w-xl space-y-4 rounded-sm border border-line bg-white p-5"
+      className="card max-w-xl space-y-4"
       onSubmit={(e) => {
         e.preventDefault()
         void api
@@ -136,7 +140,7 @@ export function ProjectPassportPage() {
       <PageHeader title={project.name} subtitle={t('cabinet.passport')} />
       <ol className="space-y-3">
         {project.stages.map((stage) => (
-          <li key={stage.id} className="rounded-sm border border-line bg-white p-4">
+          <li key={stage.id} className="card">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <p className="font-semibold">{pickName(stage.procedure.names, i18n.language, stage.procedure.code)}</p>
@@ -165,15 +169,15 @@ export function ApplicationsPage() {
   const query = useQuery({ queryKey: ['applications'], queryFn: () => api.applications() as Promise<ApplicationDto[]> })
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <PageHeader title={t('cabinet.applications')} />
-        <ButtonLink to="/cabinet/applications/new">{t('cabinet.newApplication')}</ButtonLink>
-      </div>
+      <PageHeader
+        title={t('cabinet.applications')}
+        action={<ButtonLink to="/cabinet/applications/new">{t('cabinet.newApplication')}</ButtonLink>}
+      />
       {query.data?.length === 0 ? <EmptyState title={t('common.empty')} /> : null}
-      <ul className="divide-y divide-line rounded-sm border border-line bg-white">
+      <ul className="tbl-wrap">
         {query.data?.map((item) => (
-          <li key={item.id} className="flex items-center justify-between px-4 py-3">
-            <Link to={`/cabinet/applications/${item.id}`} className="text-navy">
+          <li key={item.id} className="flex items-center justify-between px-4 py-3" style={{ borderBottom: '1px solid var(--line)' }}>
+            <Link to={`/cabinet/applications/${item.id}`}>
               {item.publicNumber || item.id}
             </Link>
             <StatusBadge status={item.investorStatus} />
@@ -192,7 +196,7 @@ export function ApplicationNewPage() {
   const [error, setError] = useState<string | null>(null)
   return (
     <form
-      className="max-w-xl space-y-4 rounded-sm border border-line bg-white p-5"
+      className="card max-w-xl space-y-4"
       onSubmit={(e) => {
         e.preventDefault()
         const params = new URLSearchParams(window.location.search)
@@ -268,7 +272,7 @@ export function ApplicationDetailPage() {
       {error ? <Alert tone="error">{error}</Alert> : null}
       {app.snapshot ? <Alert tone="info">Snapshot is immutable after submit (FR-APP-04).</Alert> : null}
       <form
-        className="space-y-3 rounded-sm border border-line bg-white p-4"
+        className="card space-y-3"
         onSubmit={(e) => {
           e.preventDefault()
           void api.patchApplication(app.id, answers).then(() => void client.invalidateQueries({ queryKey: ['application', id] }))
@@ -328,7 +332,7 @@ export function ApplicationDetailPage() {
           </Button>
         </form>
       ) : null}
-      <section className="space-y-2 rounded-sm border border-line bg-white p-4">
+      <section className="card space-y-2">
         <h2 className="text-lg">{t('cabinet.messages')}</h2>
         <ul className="space-y-2 text-sm">
           {app.messages?.map((item) => (
@@ -364,7 +368,7 @@ export function ProfilePage() {
     <div className="space-y-6">
       <PageHeader title={t('cabinet.profile')} />
       <form
-        className="max-w-xl space-y-3 rounded-sm border border-line bg-white p-4"
+        className="card max-w-xl space-y-3"
         onSubmit={(e) => {
           e.preventDefault()
           void api.updateProfile({ companyName })
@@ -380,7 +384,7 @@ export function ProfilePage() {
         <h2 className="text-lg">Representations</h2>
         <ul>
           {reps.data?.map((item) => (
-            <li key={item.id} className="flex items-center justify-between border-b border-line py-2 text-sm">
+            <li key={item.id} className="flex items-center justify-between py-2 text-sm" style={{ borderBottom: '1px solid var(--line)' }}>
               <span>
                 {item.representativeUser?.email} · {item.authority}
               </span>
@@ -421,9 +425,9 @@ export function DocumentsPage() {
           if (file) void api.uploadDocument(file, 'identity-document').then(() => void query.refetch())
         }}
       />
-      <ul className="divide-y divide-line rounded-sm border border-line bg-white">
+      <ul className="tbl-wrap">
         {query.data?.map((doc) => (
-          <li key={doc.id} className="px-3 py-2 text-sm">
+          <li key={doc.id} className="px-4 py-3 text-sm" style={{ borderBottom: '1px solid var(--line)' }}>
             {doc.originalName || doc.id}
           </li>
         ))}
@@ -441,7 +445,7 @@ export function NotificationsPage() {
       {query.data?.length === 0 ? <EmptyState title={t('common.empty')} /> : null}
       <ul className="space-y-2">
         {query.data?.map((item) => (
-          <li key={item.id} className="rounded-sm border border-line bg-white p-3 text-sm">
+          <li key={item.id} className="card text-sm" style={{ padding: 16 }}>
             <p>{item.body}</p>
             {!item.readAt ? (
               <Button type="button" variant="ghost" onClick={() => void api.readNotification(item.id).then(() => void query.refetch())}>

@@ -43,7 +43,7 @@ export function LoginPage() {
   }
 
   return (
-    <div className="mx-auto max-w-md space-y-4 rounded-sm border border-line bg-white p-6">
+    <div className="card auth-card space-y-4">
       <h1 className="text-2xl">{challenge ? t('auth.twoFactorTitle') : t('auth.loginTitle')}</h1>
       {challenge ? <p className="text-sm text-muted">{t('auth.twoFactorHint')}</p> : null}
       {error ? <Alert tone="error">{error}</Alert> : null}
@@ -100,7 +100,7 @@ export function RegisterPage() {
   const [pending, setPending] = useState(false)
 
   return (
-    <div className="mx-auto max-w-md space-y-4 rounded-sm border border-line bg-white p-6">
+    <div className="card auth-card space-y-4">
       <h1 className="text-2xl">{t('auth.registerTitle')}</h1>
       {error ? <Alert tone="error">{error}</Alert> : null}
       <form
@@ -121,7 +121,7 @@ export function RegisterPage() {
         <Field label={t('common.password')} hint={t('auth.passwordHint')}>
           <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={10} />
         </Field>
-        <label className="flex items-start gap-2 text-sm">
+        <label className="ck">
           <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} required />
           {t('auth.consent')}
         </label>
@@ -141,7 +141,7 @@ export function ForgotPasswordPage() {
   const [email, setEmail] = useState('')
   const [message, setMessage] = useState<string | null>(null)
   return (
-    <div className="mx-auto max-w-md space-y-4 rounded-sm border border-line bg-white p-6">
+    <div className="card auth-card space-y-4">
       <h1 className="text-2xl">{t('auth.forgotTitle')}</h1>
       {message ? <Alert tone="success">{message}</Alert> : null}
       <form
@@ -170,7 +170,7 @@ export function ResetPasswordPage() {
   const [error, setError] = useState<string | null>(null)
   const token = params.get('token') ?? ''
   return (
-    <div className="mx-auto max-w-md space-y-4 rounded-sm border border-line bg-white p-6">
+    <div className="card auth-card space-y-4">
       <h1 className="text-2xl">{t('auth.forgotTitle')}</h1>
       {error ? <Alert tone="error">{error}</Alert> : null}
       {done ? (
@@ -204,7 +204,7 @@ export function VerifyEmailPage() {
   const [message, setMessage] = useState<string | null>(null)
   const token = params.get('token') ?? ''
   return (
-    <div className="mx-auto max-w-md space-y-4 rounded-sm border border-line bg-white p-6">
+    <div className="card auth-card space-y-4">
       <h1 className="text-2xl">{t('auth.verifyTitle')}</h1>
       {message ? <Alert>{message}</Alert> : null}
       <Button

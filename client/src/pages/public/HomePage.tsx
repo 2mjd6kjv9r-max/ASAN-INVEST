@@ -2,50 +2,125 @@ import { useQuery } from '@tanstack/react-query'
 import { FlagBadge } from '@/components/FlagBadge'
 import { ButtonLink, ErrorState, PageHeader, Skeleton } from '@/components/ui'
 import { api } from '@/lib/api'
-import type { CmsPage } from '@/lib/types'
+import type { CmsPage, Flag } from '@/lib/types'
+import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
+import { NavLink } from 'react-router-dom'
+
+const FLAGS: Flag[] = ['AUTO', 'ONLINE', 'PHYSICAL', 'PLANNED']
+
+function useReveal() {
+  useEffect(() => {
+    const nodes = Array.from(document.querySelectorAll<HTMLElement>('[data-rv]'))
+    if (!nodes.length) return
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) entry.target.classList.add('rv-in')
+        }
+      },
+      { threshold: 0.12 },
+    )
+    nodes.forEach((n) => io.observe(n))
+    return () => io.disconnect()
+  }, [])
+}
+
+function splitTitle(title: string) {
+  const dash = title.includes(' — ') ? ' — ' : title.includes(' - ') ? ' - ' : null
+  if (!dash) return { lead: title, rest: null as string | null }
+  const [lead, rest] = title.split(dash)
+  return { lead: `${lead}${dash}`, rest: rest ?? null }
+}
 
 export function HomePage() {
   const { t, i18n } = useTranslation()
+  useReveal()
   const page = useQuery({
     queryKey: ['page', 'home', i18n.language],
     queryFn: () => api.page('home', i18n.language) as Promise<CmsPage>,
   })
+  const { lead, rest } = splitTitle(t('home.title'))
 
   return (
-    <div className="space-y-10">
-      <section className="grid gap-8 lg:grid-cols-[1.2fr_0.8fr]">
-        <div>
-          <p className="text-sm font-semibold uppercase tracking-wide text-navy-700">{t('home.kicker')}</p>
-          <h1 className="mt-2 text-3xl font-semibold sm:text-4xl">{t('home.title')}</h1>
-          {page.isLoading ? <Skeleton className="mt-4 h-16" /> : null}
-          {page.isError ? <ErrorState message={t('common.error')} onRetry={() => void page.refetch()} /> : null}
-          {page.data ? <p className="mt-4 max-w-2xl text-muted">{page.data.body}</p> : null}
-          <div className="mt-6 flex flex-wrap gap-3">
-            <ButtonLink to="/route">{t('home.primaryRoute')}</ButtonLink>
-            <ButtonLink to="/opportunities" variant="secondary">
-              {t('home.primaryOpp')}
-            </ButtonLink>
+    <div>
+      <section className="hero">
+        <div className="hero-photo">
+          <div className="hero-in" style={{ position: 'relative', zIndex: 2 }}>
+            <div className="hero-txt">
+              <span className="eyebrow">{t('home.kicker')}</span>
+              <h1>
+                {lead}
+                {rest ? <em>{rest}</em> : null}
+              </h1>
+              {page.isLoading ? <Skeleton className="mt-4 h-16" /> : null}
+              {page.isError ? <ErrorState message={t('common.error')} onRetry={() => void page.refetch()} /> : null}
+              {page.data ? <p className="hero-sub">{page.data.body}</p> : null}
+              <div className="hero-actions">
+                <ButtonLink to="/route" style={{ height: 46, padding: '0 26px' }}>
+                  {t('home.primaryRoute')}
+                </ButtonLink>
+                <ButtonLink to="/opportunities" variant="hero" style={{ height: 46, padding: '0 26px' }}>
+                  {t('home.primaryOpp')}
+                </ButtonLink>
+              </div>
+            </div>
+            <aside className="hero-card">
+              <h3>{t('home.honesty')}</h3>
+              <p className="cap" style={{ margin: '4px 0 14px' }}>
+                {t('estimatedNote')}
+              </p>
+              <div className="honesty-row">
+                {FLAGS.map((flag) => (
+                  <div className="honesty-item" key={flag}>
+                    <FlagBadge flag={flag} />
+                    <p>{t(`flags.${flag}_hint`)}</p>
+                  </div>
+                ))}
+              </div>
+            </aside>
           </div>
-          <p className="mt-3">
-            <a href="/register" className="text-sm text-muted">
-              {t('home.registerSecondary')}
-            </a>
-          </p>
         </div>
-        <aside className="space-y-3 rounded-sm border border-line bg-white p-5">
-          <h2 className="text-lg">{t('home.honesty')}</h2>
-          <FlagBadge flag="AUTO" />
-          <p className="text-sm text-muted">{t('flags.AUTO_hint')}</p>
-          <FlagBadge flag="ONLINE" />
-          <p className="text-sm text-muted">{t('flags.ONLINE_hint')}</p>
-          <FlagBadge flag="PHYSICAL" />
-          <p className="text-sm text-muted">{t('flags.PHYSICAL_hint')}</p>
-          <FlagBadge flag="PLANNED" />
-          <p className="text-sm text-muted">{t('flags.PLANNED_hint')}</p>
-        </aside>
       </section>
-      <p className="text-sm text-muted">{t('estimatedNote')}</p>
+
+      <div className="statband" data-rv>
+        <div className="statgrid">
+          {FLAGS.map((flag) => (
+            <div className="stat" key={flag}>
+              <div className="stat-ic">
+                <span className={`flag-dot ${flag.toLowerCase()}`} aria-hidden="true" />
+              </div>
+              <div className="num">{t(`flags.${flag}`)}</div>
+              <div className="lbl">{t('home.honesty')}</div>
+              <div className="sub">{t(`flags.${flag}_hint`)}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <section className="ctaband" data-rv>
+        <h2>{t('home.title')}</h2>
+        <p>{t('home.registerSecondary')}</p>
+        <div className="row" style={{ justifyContent: 'center', gap: 14, flexWrap: 'wrap' }}>
+          <ButtonLink to="/register" style={{ height: 46, padding: '0 26px' }}>
+            {t('nav.register')}
+          </ButtonLink>
+          <ButtonLink to="/login" variant="hero" style={{ height: 46, padding: '0 26px' }}>
+            {t('nav.login')}
+          </ButtonLink>
+        </div>
+      </section>
+
+      <footer className="pubfoot">
+        <div className="b">
+          <span>{t('footer.copy', { year: new Date().getFullYear() })}</span>
+          <span>
+            <NavLink to="/ombudsman">{t('nav.ombudsman')}</NavLink>
+            {' · '}
+            <NavLink to="/about">{t('nav.about')}</NavLink>
+          </span>
+        </div>
+      </footer>
     </div>
   )
 }
@@ -60,9 +135,13 @@ export function CmsPageView({ slug }: { slug: string }) {
   if (page.isError) return <ErrorState message={t('common.error')} onRetry={() => void page.refetch()} />
   if (!page.data) return null
   return (
-    <article className="prose-none max-w-3xl">
+    <article className="max-w-3xl">
       <PageHeader title={page.data.title} />
-      <p className="whitespace-pre-wrap text-ink">{page.data.body}</p>
+      <div className="card">
+        <p className="whitespace-pre-wrap" style={{ lineHeight: 1.7 }}>
+          {page.data.body}
+        </p>
+      </div>
     </article>
   )
 }
@@ -71,24 +150,30 @@ export function OpportunitiesPage() {
   const { i18n } = useTranslation()
   const query = useQuery({
     queryKey: ['opportunities', i18n.language],
-    queryFn: () => api.opportunities(i18n.language) as Promise<{ catalogue: { slug: string; title: string; body: string }[]; zones: { code: string; names: Record<string, string> }[] }>,
+    queryFn: () =>
+      api.opportunities(i18n.language) as Promise<{
+        catalogue: { slug: string; title: string; body: string }[]
+        zones: { code: string; names: Record<string, string> }[]
+      }>,
   })
   return (
     <div>
       <CmsPageView slug="opportunities" />
       {query.isLoading ? <Skeleton className="mt-6 h-24" /> : null}
       {query.data ? (
-        <div className="mt-8 grid gap-4 md:grid-cols-2">
+        <div className="prj-grid mt-8">
           {query.data.catalogue.map((item) => (
-            <article key={item.slug} className="rounded-sm border border-line bg-white p-4">
-              <h2 className="text-lg">{item.title}</h2>
-              <p className="mt-2 text-sm text-muted">{item.body}</p>
+            <article key={item.slug} className="card hover-lift">
+              <h2 style={{ fontSize: 18 }}>{item.title}</h2>
+              <p className="cap mt-2" style={{ lineHeight: 1.65 }}>
+                {item.body}
+              </p>
             </article>
           ))}
           {query.data.zones.map((zone) => (
-            <article key={zone.code} className="rounded-sm border border-line bg-white p-4">
-              <h2 className="text-lg">{zone.names[i18n.language] || zone.names.en || zone.code}</h2>
-              <p className="text-sm text-muted">{zone.code}</p>
+            <article key={zone.code} className="card hover-lift">
+              <h2 style={{ fontSize: 18 }}>{zone.names[i18n.language] || zone.names.en || zone.code}</h2>
+              <p className="cap">{zone.code}</p>
             </article>
           ))}
         </div>
@@ -113,12 +198,12 @@ export function CompanyRegistrationPage() {
     <div className="max-w-3xl space-y-4">
       <PageHeader title={t('company.title')} subtitle={t('company.body')} />
       {query.data ? (
-        <>
-          <p className="text-muted">{query.data.message}</p>
-          <a className="inline-flex items-center justify-center rounded-sm bg-navy px-4 py-2 text-sm font-semibold text-white no-underline" href={query.data.url} rel="noreferrer">
+        <div className="card space-y-4">
+          <p className="muted">{query.data.message}</p>
+          <a className="btn btn-p no-underline" href={query.data.url} rel="noreferrer">
             {t('company.cta')}
           </a>
-        </>
+        </div>
       ) : null}
     </div>
   )

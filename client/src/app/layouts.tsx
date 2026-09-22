@@ -1,104 +1,257 @@
 import { useAuth, useIsStaff } from '@/app/providers'
+import { BrandMark } from '@/components/BrandMark'
 import { LanguageSwitch } from '@/components/LanguageSwitch'
-import { Alert } from '@/components/ui'
 import { cn } from '@/lib/cn'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Link, NavLink, Outlet } from 'react-router-dom'
+import { NavLink, Outlet, useLocation } from 'react-router-dom'
 
-const publicLinks = [
-  { to: '/why-azerbaijan', key: 'nav.why' },
-  { to: '/opportunities', key: 'nav.opportunities' },
-  { to: '/investor-guide', key: 'nav.guide' },
-  { to: '/kya', key: 'nav.kya' },
-  { to: '/route', key: 'nav.route' },
-  { to: '/incentives', key: 'nav.incentives' },
-  { to: '/ombudsman', key: 'nav.ombudsman' },
-  { to: '/about', key: 'nav.about' },
+const navGroups = [
+  {
+    labelKey: 'nav.groupWhy',
+    links: [
+      { to: '/why-azerbaijan', key: 'nav.why' },
+      { to: '/about', key: 'nav.about' },
+    ],
+  },
+  {
+    labelKey: 'nav.groupInvestor',
+    links: [
+      { to: '/kya', key: 'nav.kya' },
+      { to: '/route', key: 'nav.route' },
+      { to: '/investor-guide', key: 'nav.guide' },
+    ],
+  },
+  {
+    labelKey: 'nav.groupOpps',
+    links: [
+      { to: '/opportunities', key: 'nav.opportunities' },
+      { to: '/incentives', key: 'nav.incentives' },
+    ],
+  },
+  {
+    labelKey: 'nav.groupPractical',
+    links: [
+      { to: '/company-registration', key: 'nav.company' },
+      { to: '/ombudsman', key: 'nav.ombudsman' },
+    ],
+  },
 ] as const
 
-export function PortalLayout() {
+function initials(value?: string) {
+  if (!value) return 'AI'
+  const part = value.split('@')[0] ?? value
+  return part.slice(0, 2).toUpperCase()
+}
+
+function MenuIcon({ open }: { open: boolean }) {
+  return open ? (
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      <path d="M5 5l10 10M15 5L5 15" stroke="currentColor" strokeWidth="1.6" />
+    </svg>
+  ) : (
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      <path d="M4 6h12M4 10h12M4 14h12" stroke="currentColor" strokeWidth="1.6" />
+    </svg>
+  )
+}
+
+function TopNav({ publicNav }: { publicNav: boolean }) {
   const { t } = useTranslation()
   const { user, logout } = useAuth()
   const staff = useIsStaff()
   const [open, setOpen] = useState(false)
+  const location = useLocation()
 
   return (
-    <div className="min-h-svh bg-navy-50">
+    <header className="topnav">
+      <BrandMark />
+      {publicNav ? (
+        <nav className="desk" style={{ display: 'flex', gap: 0, flex: 1, justifyContent: 'center', alignItems: 'center', flexWrap: 'nowrap' }} aria-label="Primary">
+          {navGroups.map((group) => (
+            <div className="mm" key={group.labelKey}>
+              <a className="nl" tabIndex={0} href={group.links[0]?.to} style={{ padding: '8px 9px', display: 'inline-block', cursor: 'pointer' }} onClick={(e) => e.preventDefault()}>
+                {t(group.labelKey)} ▾
+              </a>
+              <div className="mm-p">
+                {group.links.map((link) => (
+                  <NavLink key={link.to} to={link.to} className={({ isActive }) => cn(isActive && 'font-medium')}>
+                    {t(link.key)}
+                  </NavLink>
+                ))}
+              </div>
+            </div>
+          ))}
+        </nav>
+      ) : (
+        <div style={{ flex: 1 }} />
+      )}
+      <div className="row" style={{ gap: 10, flex: 'none' }}>
+        {publicNav ? (
+          <button type="button" className="iconbtn burger" aria-expanded={open} aria-label={open ? t('nav.close') : t('nav.menu')} onClick={() => setOpen((v) => !v)}>
+            <MenuIcon open={open} />
+          </button>
+        ) : null}
+        <LanguageSwitch />
+        {user ? (
+          <>
+            <NavLink to={staff ? '/backoffice' : '/cabinet'} className="pill no-underline">
+              {staff ? t('nav.backoffice') : t('nav.cabinet')}
+            </NavLink>
+            <div className="userchip hidden sm:flex">
+              <div className="av">{initials(user.email)}</div>
+              <div className="hidden md:block">
+                <div className="nm">{user.email.split('@')[0]}</div>
+                <div className="em">{user.email}</div>
+              </div>
+            </div>
+            <button type="button" className="btn btn-sm" style={{ background: '#fff', color: 'var(--navy)' }} onClick={() => void logout()}>
+              {t('nav.logout')}
+            </button>
+          </>
+        ) : (
+          <>
+            <NavLink to="/register" className="nl hidden sm:inline" style={{ padding: '8px 4px' }}>
+              {t('nav.register')}
+            </NavLink>
+            <NavLink to="/login" className="btn btn-sm no-underline" style={{ background: '#fff', color: 'var(--navy)' }}>
+              {t('nav.login')}
+            </NavLink>
+          </>
+        )}
+      </div>
+      {publicNav && open ? (
+        <div className="mob-p">
+          {navGroups.map((group) => (
+            <div className="g" key={group.labelKey}>
+              <div className="label">{t(group.labelKey)}</div>
+              {group.links.map((link) => (
+                <NavLink key={link.to} to={link.to} onClick={() => setOpen(false)} className={location.pathname === link.to ? 'on' : undefined}>
+                  {t(link.key)}
+                </NavLink>
+              ))}
+            </div>
+          ))}
+          {!user ? (
+            <div className="g">
+              <NavLink to="/login" onClick={() => setOpen(false)}>
+                {t('nav.login')}
+              </NavLink>
+              <NavLink to="/register" onClick={() => setOpen(false)}>
+                {t('nav.register')}
+              </NavLink>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </header>
+  )
+}
+
+export function PortalLayout() {
+  const { t } = useTranslation()
+  const location = useLocation()
+  const home = location.pathname === '/'
+
+  return (
+    <div className="min-h-svh" style={{ background: 'var(--canvas)' }}>
       <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:bg-white focus:px-3 focus:py-2">
         {t('skip')}
       </a>
-      <div className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-center text-sm text-amber-950">{t('demoNotice')}</div>
-      <header className="border-b border-line bg-white">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3">
-          <Link to="/" className="font-semibold tracking-tight text-navy no-underline">
-            {t('brand')}
-          </Link>
-          <nav className="hidden items-center gap-4 text-sm lg:flex" aria-label="Primary">
-            {publicLinks.map((link) => (
-              <NavLink key={link.to} to={link.to} className={({ isActive }) => cn('text-navy no-underline hover:underline', isActive && 'font-semibold')}>
-                {t(link.key)}
-              </NavLink>
-            ))}
-          </nav>
-          <div className="flex items-center gap-3">
-            <LanguageSwitch />
-            {user ? (
-              <div className="hidden items-center gap-3 sm:flex">
-                <NavLink to={staff ? '/backoffice' : '/cabinet'} className="text-sm font-semibold text-navy no-underline">
-                  {staff ? t('nav.backoffice') : t('nav.cabinet')}
-                </NavLink>
-                <button type="button" className="text-sm text-navy" onClick={() => void logout()}>
-                  {t('nav.logout')}
-                </button>
-              </div>
-            ) : (
-              <div className="hidden gap-2 sm:flex">
-                <NavLink to="/login" className="text-sm text-navy no-underline">
-                  {t('nav.login')}
-                </NavLink>
-                <NavLink to="/register" className="text-sm text-muted no-underline">
-                  {t('nav.register')}
-                </NavLink>
-              </div>
-            )}
-            <button type="button" className="lg:hidden" aria-expanded={open} aria-label={open ? t('nav.close') : t('nav.menu')} onClick={() => setOpen((v) => !v)}>
-              Menu
-            </button>
-          </div>
-        </div>
-        {open ? (
-          <nav className="space-y-2 border-t border-line px-4 py-3 lg:hidden">
-            {publicLinks.map((link) => (
-              <NavLink key={link.to} to={link.to} className="block text-navy no-underline" onClick={() => setOpen(false)}>
-                {t(link.key)}
-              </NavLink>
-            ))}
-          </nav>
-        ) : null}
-      </header>
-      <main id="main" className="mx-auto max-w-6xl px-4 py-8">
+      <div className="notice-bar">{t('demoNotice')}</div>
+      <TopNav publicNav />
+      <main id="main" className={home ? undefined : 'pub'}>
         <Outlet />
       </main>
-      <footer className="border-t border-line bg-white px-4 py-6 text-center text-sm text-muted">
-        {t('footer.copy', { year: new Date().getFullYear() })}
-      </footer>
+      {home ? null : (
+        <footer className="pubfoot">
+          <div className="b">
+            <span>{t('footer.copy', { year: new Date().getFullYear() })}</span>
+            <span>
+              <NavLink to="/ombudsman">{t('nav.ombudsman')}</NavLink>
+              {' · '}
+              <NavLink to="/about">{t('nav.about')}</NavLink>
+            </span>
+          </div>
+        </footer>
+      )}
     </div>
   )
 }
 
-function ShellNav({ links }: { links: { to: string; label: string }[] }) {
+function ShellIcon({ name }: { name: string }) {
+  const common = { width: 18, height: 18, fill: 'none', stroke: 'currentColor', strokeWidth: 1.6, 'aria-hidden': true as const }
+  switch (name) {
+    case 'home':
+      return (
+        <svg {...common} viewBox="0 0 18 18">
+          <path d="M3 8.5L9 3.5l6 5V15H3V8.5Z" />
+        </svg>
+      )
+    case 'doc':
+      return (
+        <svg {...common} viewBox="0 0 18 18">
+          <path d="M5 2.5h6l3 3V15.5H5V2.5Z" />
+          <path d="M11 2.5V6h3" />
+        </svg>
+      )
+    case 'bld':
+      return (
+        <svg {...common} viewBox="0 0 18 18">
+          <path d="M4 15.5V5l5-2.5 5 2.5v10.5H4Z" />
+          <path d="M7 8h1M10 8h1M7 11h1M10 11h1" />
+        </svg>
+      )
+    case 'fold':
+      return (
+        <svg {...common} viewBox="0 0 18 18">
+          <path d="M3 5h4l1.5 1.5H15v8H3V5Z" />
+        </svg>
+      )
+    case 'bell':
+      return (
+        <svg {...common} viewBox="0 0 18 18">
+          <path d="M4.5 13.5h9l-1-2V8A3.5 3.5 0 0 0 9 4.5 3.5 3.5 0 0 0 5.5 8v3.5l-1 2Z" />
+          <path d="M8 15h2" />
+        </svg>
+      )
+    case 'user':
+      return (
+        <svg {...common} viewBox="0 0 18 18">
+          <circle cx="9" cy="6.5" r="2.5" />
+          <path d="M4 14.5c.8-2.4 2.4-3.5 5-3.5s4.2 1.1 5 3.5" />
+        </svg>
+      )
+    case 'grid':
+      return (
+        <svg {...common} viewBox="0 0 18 18">
+          <rect x="3" y="3" width="5" height="5" rx="1" />
+          <rect x="10" y="3" width="5" height="5" rx="1" />
+          <rect x="3" y="10" width="5" height="5" rx="1" />
+          <rect x="10" y="10" width="5" height="5" rx="1" />
+        </svg>
+      )
+    case 'chart':
+      return (
+        <svg {...common} viewBox="0 0 18 18">
+          <path d="M3 14.5h12M5 12V8M9 12V5.5M13 12V7" />
+        </svg>
+      )
+    default:
+      return (
+        <svg {...common} viewBox="0 0 18 18">
+          <circle cx="9" cy="9" r="6" />
+        </svg>
+      )
+  }
+}
+
+function ShellNav({ links }: { links: { to: string; label: string; icon: string }[] }) {
   return (
-    <nav className="space-y-1" aria-label="Section">
+    <nav aria-label="Section">
       {links.map((link) => (
-        <NavLink
-          key={link.to}
-          to={link.to}
-          end={link.to.split('/').length <= 2}
-          className={({ isActive }) =>
-            cn('block rounded-sm px-3 py-2 text-sm no-underline', isActive ? 'bg-navy text-white' : 'text-navy hover:bg-navy-50')
-          }
-        >
+        <NavLink key={link.to} to={link.to} end={link.to.split('/').length <= 2} className={({ isActive }) => cn(isActive && 'on')}>
+          <ShellIcon name={link.icon} />
           {link.label}
         </NavLink>
       ))}
@@ -110,74 +263,60 @@ export function CabinetLayout() {
   const { t } = useTranslation()
   const { user, logout } = useAuth()
   const links = [
-    { to: '/cabinet', label: t('cabinet.title') },
-    { to: '/cabinet/projects', label: t('cabinet.projects') },
-    { to: '/cabinet/applications', label: t('cabinet.applications') },
-    { to: '/cabinet/documents', label: t('cabinet.documents') },
-    { to: '/cabinet/notifications', label: t('cabinet.notifications') },
-    { to: '/cabinet/profile', label: t('cabinet.profile') },
+    { to: '/cabinet', label: t('cabinet.title'), icon: 'home' },
+    { to: '/cabinet/applications', label: t('cabinet.applications'), icon: 'doc' },
+    { to: '/cabinet/projects', label: t('cabinet.projects'), icon: 'bld' },
+    { to: '/cabinet/documents', label: t('cabinet.documents'), icon: 'fold' },
+    { to: '/cabinet/notifications', label: t('cabinet.notifications'), icon: 'bell' },
+    { to: '/cabinet/profile', label: t('cabinet.profile'), icon: 'user' },
   ]
-  return (
-    <AppShell title={t('cabinet.title')} userEmail={user?.email} onLogout={() => void logout()} links={links} notice={t('demoNotice')} />
-  )
+  return <AppShell userEmail={user?.email} onLogout={() => void logout()} links={links} notice={t('demoNotice')} />
 }
 
 export function BackofficeLayout() {
   const { t } = useTranslation()
   const { user, logout } = useAuth()
   const links = [
-    { to: '/backoffice', label: t('backoffice.cases') },
-    { to: '/backoffice/evaluations', label: t('backoffice.evaluations') },
-    { to: '/backoffice/admin', label: t('backoffice.admin') },
-    { to: '/backoffice/analytics', label: t('backoffice.analytics') },
+    { to: '/backoffice', label: t('backoffice.cases'), icon: 'grid' },
+    { to: '/backoffice/evaluations', label: t('backoffice.evaluations'), icon: 'doc' },
+    { to: '/backoffice/admin', label: t('backoffice.admin'), icon: 'bld' },
+    { to: '/backoffice/analytics', label: t('backoffice.analytics'), icon: 'chart' },
   ]
-  return (
-    <AppShell
-      title={t('backoffice.title')}
-      userEmail={user?.email}
-      onLogout={() => void logout()}
-      links={links}
-      notice={t('backoffice.internal')}
-    />
-  )
+  return <AppShell userEmail={user?.email} onLogout={() => void logout()} links={links} notice={t('backoffice.internal')} />
 }
 
 function AppShell({
-  title,
   userEmail,
   onLogout,
   links,
   notice,
 }: {
-  title: string
   userEmail?: string
   onLogout: () => void
-  links: { to: string; label: string }[]
+  links: { to: string; label: string; icon: string }[]
   notice: string
 }) {
   const { t } = useTranslation()
   return (
-    <div className="min-h-svh bg-navy-50">
+    <div className="min-h-svh" style={{ background: 'var(--canvas)' }}>
       <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:bg-white focus:px-3 focus:py-2">
         {t('skip')}
       </a>
-      <Alert tone="warning">{notice}</Alert>
-      <div className="mx-auto grid max-w-7xl gap-6 px-4 py-6 lg:grid-cols-[220px_1fr]">
-        <aside className="space-y-4">
-          <div>
-            <Link to="/" className="text-sm font-semibold text-navy no-underline">
-              {t('brand')}
-            </Link>
-            <p className="text-lg font-semibold text-navy">{title}</p>
-            <p className="text-xs text-muted">{userEmail}</p>
-          </div>
+      <div className="notice-bar">{notice}</div>
+      <TopNav publicNav={false} />
+      <div className="shell">
+        <aside className="sb">
           <ShellNav links={links} />
-          <LanguageSwitch />
-          <button type="button" className="text-sm text-navy" onClick={onLogout}>
-            {t('nav.logout')}
-          </button>
+          <div className="sb-foot">
+            <p className="cap" style={{ marginBottom: 8 }}>
+              {userEmail}
+            </p>
+            <button type="button" className="btn btn-t" style={{ padding: 0 }} onClick={onLogout}>
+              {t('nav.logout')}
+            </button>
+          </div>
         </aside>
-        <main id="main" className="min-w-0">
+        <main id="main" className="main">
           <Outlet />
         </main>
       </div>

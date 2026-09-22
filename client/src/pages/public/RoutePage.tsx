@@ -105,10 +105,11 @@ export function RoutePage() {
             <button
               key={item.code}
               type="button"
-              className={`rounded-sm border p-4 text-left ${answers.sector === item.code ? 'border-navy bg-navy-50' : 'border-line bg-white'}`}
+              className={`optcard ${answers.sector === item.code ? 'sel' : ''}`}
               onClick={() => setAnswers((a) => ({ ...a, sector: item.code }))}
             >
-              <span className="font-semibold text-navy">{pickName(item.names, i18n.language, item.code)}</span>
+              <span className="radio" />
+              <span className="font-medium">{pickName(item.names, i18n.language, item.code)}</span>
             </button>
           ))}
         </div>
@@ -189,27 +190,55 @@ export function RoutePage() {
       <PageHeader title={t('route.title')} subtitle={t('route.subtitle')} />
       {error ? <Alert tone="error">{error}</Alert> : null}
       {!result ? (
-        <section className="space-y-4 rounded-sm border border-line bg-white p-5">
-          <p className="text-sm text-muted">
-            {step + 1} / {steps.length}
-          </p>
-          <h2 className="text-xl">{current.title}</h2>
-          {current.body}
-          <div className="flex gap-3">
-            {step > 0 ? (
-              <Button variant="secondary" type="button" onClick={() => setStep((s) => s - 1)}>
-                {t('common.back')}
-              </Button>
-            ) : null}
-            {step < steps.length - 1 ? (
-              <Button type="button" disabled={!current.valid} onClick={() => setStep((s) => s + 1)}>
-                {t('common.next')}
-              </Button>
-            ) : (
-              <Button type="button" loading={calculate.isPending} onClick={() => calculate.mutate()}>
-                {t('common.continue')}
-              </Button>
-            )}
+        <section className="space-y-4">
+          <div className="stepper">
+            {steps.map((item, i) => (
+              <div className="stp" key={item.title}>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 110 }}>
+                  <div
+                    className="c"
+                    style={
+                      i < step
+                        ? { background: 'var(--accent)', color: '#fff' }
+                        : i === step
+                          ? { background: 'var(--blue)', color: '#fff' }
+                          : { background: '#fff', color: 'var(--muted)', border: '2px solid var(--line-str)' }
+                    }
+                  >
+                    {i < step ? '✓' : i + 1}
+                  </div>
+                  <div className="lbl" style={i === step ? { fontWeight: 600, color: 'var(--navy)' } : { color: 'var(--muted)' }}>
+                    {i + 1}
+                  </div>
+                </div>
+                {i < steps.length - 1 ? <div className="ln" style={i < step ? { background: 'var(--accent)' } : undefined} /> : null}
+              </div>
+            ))}
+          </div>
+          <div className="card space-y-4" style={{ padding: 28 }}>
+            <p className="cap">
+              {t('common.next')} · {step + 1} / {steps.length}
+            </p>
+            <h2>{current.title}</h2>
+            {current.body}
+            <div className="row" style={{ justifyContent: 'space-between', marginTop: 8 }}>
+              {step > 0 ? (
+                <Button variant="secondary" type="button" onClick={() => setStep((s) => s - 1)}>
+                  {t('common.back')}
+                </Button>
+              ) : (
+                <span />
+              )}
+              {step < steps.length - 1 ? (
+                <Button type="button" disabled={!current.valid} onClick={() => setStep((s) => s + 1)}>
+                  {t('common.next')}
+                </Button>
+              ) : (
+                <Button type="button" loading={calculate.isPending} onClick={() => calculate.mutate()}>
+                  {t('common.continue')}
+                </Button>
+              )}
+            </div>
           </div>
         </section>
       ) : (
@@ -232,10 +261,10 @@ function RouteResultView({
 }) {
   const { t } = useTranslation()
   return (
-    <section className="space-y-4 rounded-sm border border-line bg-white p-5">
+    <section className="card space-y-4" style={{ padding: 28 }}>
       <div className="flex flex-wrap items-center gap-2">
-        <h2 className="text-xl">{t('route.result')}</h2>
-        {result.estimated ? <span className="rounded-sm border border-amber-300 bg-amber-50 px-2 py-0.5 text-xs font-semibold">{t('route.estimated')}</span> : null}
+        <h2>{t('route.result')}</h2>
+        {result.estimated ? <span className="badge b-yellow">{t('route.estimated')}</span> : null}
       </div>
       {result.politeStop ? <Alert tone="warning">{result.politeStop.message}</Alert> : null}
       <dl className="grid gap-3 sm:grid-cols-2">
@@ -280,7 +309,7 @@ function FeeList({ title, lines, empty }: { title: string; lines: { label: strin
       {lines.length === 0 ? (
         <p className="text-sm text-muted">{empty}</p>
       ) : (
-        <ul className="divide-y divide-line">
+        <ul className="divide-y" style={{ borderColor: 'var(--line)' }}>
           {lines.map((line) => (
             <li key={`${line.label}-${line.amount}`} className="flex justify-between py-2 text-sm">
               <span>{line.label}</span>

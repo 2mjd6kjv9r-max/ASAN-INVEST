@@ -2,6 +2,7 @@ import type { Messages } from './en'
 
 export const az: Messages = {
   brand: 'ASAN Invest',
+  brandSub: 'İnvestisiya portalı',
   skip: 'Məzmuna keç',
   demoNotice:
     'ASAN Invest qurumları əvəz etmir və icazə, təşviq və ya bank hesabı barədə qərar vermir.',
@@ -16,6 +17,11 @@ export const az: Messages = {
     incentives: 'Təşviq uyğunluğu',
     ombudsman: 'İnvestisiya Ombudsmanı',
     about: 'ASAN Invest haqqında',
+    company: 'Şirkət qeydiyyatı',
+    groupWhy: 'Niyə Azərbaycan',
+    groupInvestor: 'İnvestor üçün',
+    groupOpps: 'İmkanlar',
+    groupPractical: 'Praktiki məlumat',
     login: 'Giriş',
     register: 'Qeydiyyat',
     cabinet: 'Kabinet',

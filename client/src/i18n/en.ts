@@ -1,5 +1,6 @@
 export const en = {
   brand: 'ASAN Invest',
+  brandSub: 'Investment portal',
   skip: 'Skip to content',
   demoNotice:
     'ASAN Invest does not replace institutions and does not decide permits, incentives, or bank accounts.',
@@ -14,6 +15,11 @@ export const en = {
     incentives: 'Incentive eligibility',
     ombudsman: 'Investment Ombudsman',
     about: 'About ASAN Invest',
+    company: 'Company registration',
+    groupWhy: 'Why Azerbaijan',
+    groupInvestor: 'For investors',
+    groupOpps: 'Opportunities',
+    groupPractical: 'Practical information',
     login: 'Sign in',
     register: 'Register',
     cabinet: 'Cabinet',
