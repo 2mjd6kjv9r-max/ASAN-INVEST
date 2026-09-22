@@ -44,6 +44,21 @@ Tests: `dotnet test server/AsanInvest.sln`.
 
 Contract: [`docs/api.md`](docs/api.md).
 
+## Frontend (Phase 1)
+
+React + TypeScript + Vite SPA in `client/`. It talks to `/api/v1` using the contract in [`docs/api.md`](docs/api.md). Access tokens stay in memory; refresh uses the httpOnly `refresh_token` cookie.
+
+```bash
+npm install
+npm run dev:client
+```
+
+The Vite dev server (http://localhost:5173) proxies `/api` and `/health` to the API on port 4000. Start the API separately (`npm run dev` or `dotnet run --project server/AsanInvest.Api`).
+
+Production build: `npm run build:client`.
+
+Do not show a public KPI strip unless analytics returns `publicKpisApproved: true` (FR-HOME-04). Company registration opens the DVX URL from `GET /api/v1/company-registration` and never claims automatic company registration.
+
 ## Out of scope (Phase 1)
 
 PAY, OMB, AFT modules, DVX submit, bank APIs, in-app payments. Company registration returns the existing DVX e-service URL.

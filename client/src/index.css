@@ -1,0 +1,62 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Segoe UI", "Source Sans 3", ui-sans-serif, system-ui, sans-serif;
+  --color-navy: #0b2340;
+  --color-navy-800: #13315c;
+  --color-navy-700: #1b3f73;
+  --color-navy-100: #d7e3f4;
+  --color-navy-50: #f3f6fb;
+  --color-gold: #c9a227;
+  --color-ink: #122033;
+  --color-muted: #4b5563;
+  --color-line: #e2e8f0;
+  --color-flag-auto: #157347;
+  --color-flag-online: #1d4ed8;
+  --color-flag-physical: #b45309;
+  --color-flag-planned: #4b5563;
+  --color-success: #157347;
+  --color-danger: #b42318;
+  --color-warning: #b45309;
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+
+  body {
+    margin: 0;
+    min-height: 100svh;
+    background: var(--color-navy-50);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    line-height: 1.5;
+  }
+
+  h1,
+  h2,
+  h3 {
+    color: var(--color-navy);
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-navy);
+    outline-offset: 2px;
+  }
+}

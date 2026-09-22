@@ -4,14 +4,19 @@
   "version": "0.1.0",
   "description": "ASAN Invest — investor contact point with Azerbaijani institutions (TZ v4.0 Phase 1)",
   "workspaces": [
-    "server"
+    "server",
+    "client"
   ],
   "scripts": {
     "dev": "dotnet run --project server/AsanInvest.Api/AsanInvest.Api.csproj",
+    "dev:client": "npm run dev -w client",
     "build": "dotnet build server/AsanInvest.sln",
+    "build:client": "npm run build -w client",
     "start": "dotnet run --project server/AsanInvest.Api/AsanInvest.Api.csproj --no-build",
     "test": "dotnet test server/AsanInvest.sln",
     "lint": "dotnet build server/AsanInvest.sln --no-restore -warnaserror",
+    "lint:client": "npm run lint -w client",
+    "typecheck:client": "npm run typecheck -w client",
     "db:generate": "npm run prisma:generate -w server",
     "db:migrate": "npm run prisma:migrate -w server",
     "db:migrate:deploy": "npm run prisma:migrate:deploy -w server",
