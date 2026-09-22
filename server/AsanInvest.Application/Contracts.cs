@@ -82,7 +82,11 @@ public sealed record KyaRequest(
     JsonElement? SiParameters);
 
 public sealed record CompanyPackageRequest(string? LegalForm);
-public sealed record BankSubmissionsRequest(List<Guid> BankInstitutionIds);
+public sealed record BankSubmissionsRequest(List<Guid> BankInstitutionIds, BankChannel? Channel);
+public sealed record ProcedureFlagChangeRequest(Flag From, Flag To, bool Notify = true);
+public sealed record EResidencyGrantRequest(Guid UserId);
+public sealed record ForeignEsignStartRequest(string? Issuer);
+public sealed record ENonresidentCompleteRequest(string? Assertion);
 public sealed record BankDecisionRequest(string Outcome, string? Reason);
 public sealed record MediationNotesRequest(string Body);
 public sealed record CaseOpinionRequest(string Opinion);

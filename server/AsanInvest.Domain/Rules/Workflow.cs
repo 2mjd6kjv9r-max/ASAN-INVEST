@@ -184,6 +184,31 @@ public static class Phase2Types
         workflow == WorkflowKind.STANDARD || Codes.Contains(typeCode);
 }
 
+/// FR-FLAG-02 — «N iş günü · M fiziki təmas» from open passport stages.
+public static class FlagSummary
+{
+    public static (int WorkingDays, int PhysicalContacts) FromStages(IEnumerable<(Flag Flag, int? ExpectedDurationDays, bool Completed, bool NotApplicable)> stages)
+    {
+        var open = stages.Where(s => !s.Completed && !s.NotApplicable).ToList();
+        return (open.Sum(s => s.ExpectedDurationDays ?? 0), open.Count(s => s.Flag == Flag.PHYSICAL));
+    }
+
+    public static bool IsOpenStage(DateTimeOffset? actualCompletedAt, bool notApplicable) =>
+        actualCompletedAt is null && !notApplicable;
+}
+
+public static class FinMask
+{
+    /// Present but masked so notifications / public JSON do not leak a full FİN (FR-NOT-06).
+    public static string? Mask(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        var v = value.Trim();
+        if (v.Length <= 4) return new string('*', v.Length);
+        return $"{v[..2]}{new string('*', v.Length - 4)}{v[^2..]}";
+    }
+}
+
 public static class PaymentHmac
 {
     public static string Sign(string secret, string payload)

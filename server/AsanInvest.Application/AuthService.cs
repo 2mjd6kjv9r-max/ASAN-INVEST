@@ -185,8 +185,9 @@ public sealed class AuthService
     {
         provider = "asan_login",
         available = false,
-        identificationLevelIfCompleted = "LEGAL",
-        message = "ASAN Login is not connected in Phase 1. Use email registration (level 1) and continue legal actions via a representative or when the provider is specified.",
+        flag = Flag.PLANNED,
+        identificationLevelIfCompleted = IdentificationLevel.LEGAL,
+        message = "ASAN Login is not connected. Use email registration (level 1) and continue legal actions via a representative or when the provider is specified.",
     };
 
     public async Task<object> CreateGuestAsync(CancellationToken ct)
@@ -243,6 +244,10 @@ public sealed class AuthService
             consentedAt = user.ConsentedAt,
             pepSanctionsStatus = user.PepSanctionsStatus,
             pepSanctionsCheckedAt = user.PepSanctionsCheckedAt,
+            virtualFin = FinMask.Mask(user.VirtualFin),
+            fin = FinMask.Mask(user.Fin),
+            esignIssuer = user.EsignIssuer,
+            eResidencyStatus = user.Profile?.EResidencyStatus ?? EResidencyStatus.NONE,
             profile = user.Profile is null ? null : SerializeProfile(user.Profile),
         };
     }
@@ -262,6 +267,7 @@ public sealed class AuthService
         dvxRegistrationStatus = p.DvxRegistrationStatus,
         dvxRegisteredAt = p.DvxRegisteredAt,
         companyLegalForm = p.CompanyLegalForm,
+        eResidencyStatus = p.EResidencyStatus,
         uboStructure = p.UboStructure is null ? null : JsonSerializer.Deserialize<object>(p.UboStructure),
         version = p.Version,
     };

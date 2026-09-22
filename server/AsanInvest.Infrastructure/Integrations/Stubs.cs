@@ -38,7 +38,8 @@ public sealed class AsanLoginStub : IAsanLoginClient
     {
         provider = "asan_login",
         available = false,
+        flag = "PLANNED",
         identificationLevelIfCompleted = "LEGAL",
-        message = "ASAN Login is not connected in Phase 1. Use email registration (level 1) and continue legal actions via a representative or when the provider is specified.",
+        message = "ASAN Login is not connected. Use email registration (level 1) and continue legal actions via a representative or when the provider is specified.",
     };
 }

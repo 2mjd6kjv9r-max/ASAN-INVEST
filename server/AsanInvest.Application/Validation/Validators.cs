@@ -117,6 +117,7 @@ public sealed class BankSubmissionsRequestValidator : AbstractValidator<BankSubm
         RuleFor(x => x.BankInstitutionIds).NotNull().NotEmpty();
         RuleFor(x => x.BankInstitutionIds).Must(ids => ids.Count <= 2)
             .WithMessage("The bank pilot accepts at most two institutions");
+        RuleFor(x => x.Channel).IsInEnum().When(x => x.Channel is not null);
     }
 }
 
@@ -191,4 +192,18 @@ public sealed class FeeCreateRequestValidator : AbstractValidator<FeeCreateReque
 public sealed class PartnerBindRequestValidator : AbstractValidator<PartnerBindRequest>
 {
     public PartnerBindRequestValidator() => RuleFor(x => x.PartnerId).NotEmpty();
+}
+
+public sealed class ProcedureFlagChangeRequestValidator : AbstractValidator<ProcedureFlagChangeRequest>
+{
+    public ProcedureFlagChangeRequestValidator()
+    {
+        RuleFor(x => x.From).IsInEnum();
+        RuleFor(x => x.To).IsInEnum();
+    }
+}
+
+public sealed class EResidencyGrantRequestValidator : AbstractValidator<EResidencyGrantRequest>
+{
+    public EResidencyGrantRequestValidator() => RuleFor(x => x.UserId).NotEmpty();
 }

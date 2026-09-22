@@ -23,3 +23,29 @@ public interface IPaymentProvider
 {
     Task<IntegrationOutcome> InitiateAsync(Guid paymentId, decimal amount, string currency, CancellationToken ct);
 }
+
+public interface IENonresidentClient
+{
+    Task<IntegrationOutcome> StartAsync(Guid userId, CancellationToken ct);
+    Task<IntegrationOutcome> CompleteAsync(Guid userId, string? assertion, CancellationToken ct);
+}
+
+public interface IForeignEsignClient
+{
+    Task<IntegrationOutcome> StartAsync(string? issuer, CancellationToken ct);
+}
+
+public interface IVisaClient
+{
+    Task<IntegrationOutcome> SubmitAsync(Guid objectId, CancellationToken ct);
+}
+
+public interface ICustomsClient
+{
+    Task<IntegrationOutcome> SubmitAsync(Guid objectId, CancellationToken ct);
+}
+
+public interface IUtilityClient
+{
+    Task<IntegrationOutcome> SubmitAsync(string kind, Guid objectId, CancellationToken ct);
+}

@@ -313,6 +313,7 @@ public sealed class PlatformService
         return new
         {
             project.Id, project.Name, volumeAmount = project.VolumeAmount.ToString("0.00"), project.Status,
+            flagSummary = FlagSummaryDto(project.Stages),
             stages = project.Stages.OrderBy(s => s.SortOrder).Select(s => new
             {
                 s.Id, s.Flag, s.SortOrder, s.ExpectedDurationDays, procedure = new { s.Procedure.Code, names = Json(s.Procedure.Names) },
@@ -491,6 +492,9 @@ public sealed class PlatformService
         row.Snapshot = JsonSerializer.Serialize(new { answers = await ReadDraft(profile.Id, row.Id, ct), profileVersion = profile.Version, submittedAt = DateTimeOffset.UtcNow }, JsonOpts);
         if (needsEval)
             _db.Evaluations.Add(new Evaluation { CaseId = createdCase.Id, UserId = user.Id, Route = "expert", DueAt = createdCase.SlaDueAt });
+        if (string.Equals(row.Type.Code, "e_residency", StringComparison.OrdinalIgnoreCase)
+            && profile.EResidencyStatus is not EResidencyStatus.GRANTED)
+            profile.EResidencyStatus = EResidencyStatus.PLAN_PENDING;
         await _db.SaveChangesAsync(ct);
         return InvestorDto(row, row.Type, createdCase, default);
     }
@@ -972,6 +976,16 @@ public sealed class PlatformService
         dvxSubmitEnabled = _settings.DvxSubmitEnabled,
         paymentsEnabled = _settings.PaymentsEnabled,
         bankPilotEnabled = _settings.BankPilotEnabled,
+        asanLoginEnabled = _settings.AsanLoginEnabled,
+        eNonresidentEnabled = _settings.ENonresidentEnabled,
+        remoteBankEnabled = _settings.RemoteBankEnabled,
+        eResidencyEnabled = _settings.EResidencyEnabled,
+        foreignEsignEnabled = _settings.ForeignEsignEnabled,
+        visaEnabled = _settings.VisaEnabled,
+        customsEnabled = _settings.CustomsEnabled,
+        electricityEnabled = _settings.ElectricityEnabled,
+        gasEnabled = _settings.GasEnabled,
+        waterEnabled = _settings.WaterEnabled,
     };
 
     public async Task<object> AnalyticsOverviewAsync(CancellationToken ct)
@@ -1168,5 +1182,16 @@ public sealed class PlatformService
         }
         catch { /* ignore */ }
         return Json(snapshot);
+    }
+
+    private static object FlagSummaryDto(IEnumerable<Stage> stages)
+    {
+        var summary = FlagSummary.FromStages(stages.Select(s =>
+        {
+            var completed = s.ActualCompletedAt is not null
+                || s.Application?.Case?.InternalStatus is CaseInternalStatus.COMPLETED or CaseInternalStatus.REJECTED or CaseInternalStatus.WITHDRAWN or CaseInternalStatus.ARCHIVED;
+            return (s.Flag, s.ExpectedDurationDays, completed, s.IsNotApplicable);
+        }));
+        return new { workingDays = summary.WorkingDays, physicalContacts = summary.PhysicalContacts };
     }
 }

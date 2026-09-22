@@ -33,6 +33,7 @@ builder.Services.AddScoped<IAppDbContext>(sp => sp.GetRequiredService<AsanInvest
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<PlatformService>();
 builder.Services.AddScoped<Phase2Service>();
+builder.Services.AddScoped<Phase3Service>();
 builder.Services.AddSingleton<AuthChallengeStore>();
 builder.Services.AddSingleton<IEmailSender, LoggingEmailSender>();
 builder.Services.AddSingleton<ISmsSender, LoggingSmsSender>();
@@ -40,6 +41,11 @@ builder.Services.AddSingleton<IAsanLoginClient, AsanLoginStub>();
 builder.Services.AddSingleton<IDvxClient, DvxClientStub>();
 builder.Services.AddSingleton<IBankKycClient, BankKycClientStub>();
 builder.Services.AddSingleton<IPaymentProvider, PaymentProviderStub>();
+builder.Services.AddSingleton<IENonresidentClient, ENonresidentClientStub>();
+builder.Services.AddSingleton<IForeignEsignClient, ForeignEsignClientStub>();
+builder.Services.AddSingleton<IVisaClient, VisaClientStub>();
+builder.Services.AddSingleton<ICustomsClient, CustomsClientStub>();
+builder.Services.AddSingleton<IUtilityClient, UtilityClientStub>();
 
 builder.Services.AddFluentValidationAutoValidation();
 builder.Services.AddValidatorsFromAssemblyContaining<RegisterRequestValidator>();

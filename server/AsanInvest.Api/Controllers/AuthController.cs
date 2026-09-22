@@ -101,9 +101,28 @@ public sealed class AuthController : ApiControllerBase
         return NoContent();
     }
 
+    [HttpGet("providers")]
+    [AllowAnonymous]
+    public IActionResult Providers([FromServices] Phase3Service phase3) => OkData(phase3.AuthProviders());
+
     [HttpPost("asan-login")]
     [AllowAnonymous]
-    public IActionResult AsanLogin() => OkData(AuthService.AsanLogin());
+    public IActionResult AsanLogin([FromServices] Phase3Service phase3) => OkData(phase3.AsanLogin());
+
+    [HttpPost("e-nonresident/start")]
+    [Authorize]
+    public async Task<IActionResult> ENonresidentStart([FromServices] Phase3Service phase3, CancellationToken ct) =>
+        OkData(await phase3.StartENonresidentAsync(CurrentUser, ct));
+
+    [HttpPost("e-nonresident/complete")]
+    [Authorize]
+    public async Task<IActionResult> ENonresidentComplete([FromServices] Phase3Service phase3, [FromBody] ENonresidentCompleteRequest? body, CancellationToken ct) =>
+        OkData(await phase3.CompleteENonresidentAsync(CurrentUser, body?.Assertion, ct));
+
+    [HttpPost("foreign-esign/start")]
+    [AllowAnonymous]
+    public async Task<IActionResult> ForeignEsignStart([FromServices] Phase3Service phase3, [FromBody] ForeignEsignStartRequest? body, CancellationToken ct) =>
+        OkData(await phase3.StartForeignEsignAsync(body?.Issuer, ct));
 
     private void SetRefresh(TokenResult tokens) =>
         Response.Cookies.Append(_settings.RefreshCookieName, tokens.RefreshToken, CookieOptions(tokens.RefreshExpiresAt));
