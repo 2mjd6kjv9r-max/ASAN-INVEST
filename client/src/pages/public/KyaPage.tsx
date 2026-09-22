@@ -1,9 +1,11 @@
 import { useMutation } from '@tanstack/react-query'
 import { useAuth } from '@/app/providers'
 import { FlagBadge } from '@/components/FlagBadge'
+import { PlanNotice } from '@/components/PlanNotice'
 import { Level2Gate } from '@/components/Level2Gate'
 import { Alert, Button, ButtonLink, Field, Input, PageHeader, Select, Textarea } from '@/components/ui'
 import { api, isApiError } from '@/lib/api'
+import { planMessageKeyForCode } from '@/lib/phase3'
 import type { Flag, KyaEvaluateResult } from '@/lib/types'
 import { pickName } from '@/lib/types'
 import { useState } from 'react'
@@ -118,12 +120,19 @@ export function KyaPage() {
               <li key={item.code} className="flex flex-wrap items-center justify-between gap-2 pb-3" style={{ borderBottom: '1px solid var(--line)' }}>
                 <div>
                   <p className="font-semibold">{pickName(item.names, i18n.language, item.code)}</p>
-                  <p className="text-sm text-muted">{item.reason}</p>
+                  {item.flag === 'PLANNED' ? (
+                    <p className="text-sm text-muted">{t(planMessageKeyForCode(item.code) ?? 'flags.PLANNED_hint')}</p>
+                  ) : (
+                    <p className="text-sm text-muted">{item.reason}</p>
+                  )}
                 </div>
                 {item.flag ? <FlagBadge flag={item.flag as Flag} /> : null}
               </li>
             ))}
           </ul>
+          {result.procedures.some((item) => item.flag === 'PLANNED') ? (
+            <PlanNotice available={false} message={t('flags.PLANNED_hint')} />
+          ) : null}
           {user ? (
             <Button type="button" onClick={() => save.mutate()} loading={save.isPending}>
               {t('kya.persist')}

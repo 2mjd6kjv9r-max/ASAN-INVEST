@@ -3,7 +3,7 @@ import { PlanNotice } from '@/components/PlanNotice'
 import { StatusBadge } from '@/components/StatusBadge'
 import { Alert, Button, ButtonLink, Field, Select, Textarea } from '@/components/ui'
 import { api, isApiError } from '@/lib/api'
-import { applicationTypeForProcedure, integrationCodeForProcedure, isBankProcedure, isZoningProcedure } from '@/lib/phase3'
+import { applicationTypeForProcedure, integrationCodeForProcedure, isBankProcedure, isZoningProcedure, planMessageKeyForCode } from '@/lib/phase3'
 import type { BankChannel, BankSubmission, Classification, Flag, IntegrationStatus, ProjectDetail, ProjectStage } from '@/lib/types'
 import { pickName } from '@/lib/types'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -53,6 +53,7 @@ function StagePlanPanel({ projectId, stage }: { projectId: string; stage: Projec
   const typeCode = applicationTypeForProcedure(code)
   const canDraft = stage.displayStatus === 'OPEN'
   const draftTo = `/cabinet/applications/new?stageId=${stage.id}&projectId=${projectId}&source=PASSPORT_STAGE&typeCode=${typeCode}`
+  const planKey = planMessageKeyForCode(code) ?? (integration ? planMessageKeyForCode(integration) : null)
 
   return (
     <div className="space-y-3">
@@ -61,7 +62,18 @@ function StagePlanPanel({ projectId, stage }: { projectId: string; stage: Projec
           {stage.flag === 'PLANNED' ? t('phase3.draftPlan') : t('cabinet.newApplication')}
         </ButtonLink>
       ) : null}
-      {integration && stage.displayStatus === 'OPEN' ? <IntegrationPanel projectId={projectId} stageId={stage.id} code={integration} flag={stage.flag} /> : null}
+      {integration && (canDraft || planKey) ? (
+        <IntegrationPanel
+          projectId={projectId}
+          stageId={stage.id}
+          code={integration}
+          flag={stage.flag}
+          canSubmit={canDraft}
+          fallbackMessage={planKey ? t(planKey) : t('flags.PLANNED_hint')}
+        />
+      ) : planKey && stage.flag === 'PLANNED' ? (
+        <PlanNotice available={false} flag={stage.flag} message={t(planKey)} />
+      ) : null}
       {isBankProcedure(code) ? <BankStep projectId={projectId} canSend={stage.displayStatus === 'OPEN'} /> : null}
       {isZoningProcedure(code) ? (
         <div className="space-y-3">
@@ -81,11 +93,15 @@ function IntegrationPanel({
   stageId,
   code,
   flag,
+  canSubmit,
+  fallbackMessage,
 }: {
   projectId: string
   stageId: string
   code: string
   flag: Flag
+  canSubmit: boolean
+  fallbackMessage: string
 }) {
   const { t } = useTranslation()
   const status = useQuery({
@@ -96,19 +112,22 @@ function IntegrationPanel({
     mutationFn: () => api.externalSubmit(projectId, stageId) as Promise<{ available: boolean; flag: Flag; message: string }>,
   })
   const data = status.data
-  if (!data) return status.isError ? <Alert tone="error">{t('common.error')}</Alert> : null
+  const available = data?.available === true
+  const message = data?.message || fallbackMessage
   return (
-    <PlanNotice available={data.available} flag={data.flag || flag} message={data.message}>
+    <PlanNotice available={available} flag={data?.flag || flag} message={message}>
       <p className="cap">{t('phase3.nextPrepare')}</p>
-      <Button
-        type="button"
-        variant="secondary"
-        className="mt-2"
-        loading={submit.isPending}
-        onClick={() => submit.mutate()}
-      >
-        {t('phase3.externalSubmit')}
-      </Button>
+      {canSubmit ? (
+        <Button
+          type="button"
+          variant="secondary"
+          className="mt-2"
+          loading={submit.isPending}
+          onClick={() => submit.mutate()}
+        >
+          {t('phase3.externalSubmit')}
+        </Button>
+      ) : null}
       {submit.data ? (
         <p className="cap mt-2">
           {submit.data.message} ({t('phase3.availableFalse')})
