@@ -7,18 +7,15 @@
     "server"
   ],
   "scripts": {
-    "dev": "npm run dev -w server",
-    "build": "npm run build -w server",
-    "start": "npm run start -w server",
-    "test": "npm test -w server",
-    "lint": "npm run lint -w server",
+    "dev": "dotnet run --project server/AsanInvest.Api/AsanInvest.Api.csproj",
+    "build": "dotnet build server/AsanInvest.sln",
+    "start": "dotnet run --project server/AsanInvest.Api/AsanInvest.Api.csproj --no-build",
+    "test": "dotnet test server/AsanInvest.sln",
+    "lint": "dotnet build server/AsanInvest.sln --no-restore -warnaserror",
     "db:generate": "npm run prisma:generate -w server",
     "db:migrate": "npm run prisma:migrate -w server",
     "db:migrate:deploy": "npm run prisma:migrate:deploy -w server",
     "db:seed": "npm run prisma:seed -w server",
     "db:verify": "npm run db:verify -w server"
-  },
-  "engines": {
-    "node": ">=20"
   }
 }

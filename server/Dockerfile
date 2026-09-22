@@ -1,13 +1,19 @@
-FROM node:22-alpine
+# syntax=docker/dockerfile:1
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+WORKDIR /src
+COPY AsanInvest.sln Directory.Build.props ./
+COPY AsanInvest.Api/AsanInvest.Api.csproj AsanInvest.Api/
+COPY AsanInvest.Application/AsanInvest.Application.csproj AsanInvest.Application/
+COPY AsanInvest.Domain/AsanInvest.Domain.csproj AsanInvest.Domain/
+COPY AsanInvest.Infrastructure/AsanInvest.Infrastructure.csproj AsanInvest.Infrastructure/
+RUN dotnet restore AsanInvest.Api/AsanInvest.Api.csproj
+COPY . .
+RUN dotnet publish AsanInvest.Api/AsanInvest.Api.csproj -c Release -o /app/publish --no-restore
+
+FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
 WORKDIR /app
-ENV NODE_ENV=production
-COPY package.json package-lock.json* ./
-RUN npm install
-COPY prisma ./prisma
-COPY src ./src
-COPY tsconfig.json ./
-RUN npx prisma generate
-RUN mkdir -p /app/uploads && addgroup -S asan && adduser -S asan -G asan && chown -R asan:asan /app
-USER asan
+ENV ASPNETCORE_URLS=http://0.0.0.0:4000
+COPY --from=build /app/publish .
+RUN mkdir -p /app/uploads
 EXPOSE 4000
-CMD ["sh", "-c", "npx prisma migrate deploy && npx tsx src/index.ts"]
+ENTRYPOINT ["dotnet", "AsanInvest.Api.dll"]

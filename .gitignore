@@ -5,4 +5,7 @@ dist/
 uploads/
 coverage/
 .DS_Store
-server/src/generated/
+server/bin/
+server/**/bin/
+server/**/obj/
+
