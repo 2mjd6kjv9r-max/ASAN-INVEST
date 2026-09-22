@@ -8,7 +8,6 @@ namespace AsanInvest.Api.Controllers;
 
 [ApiController]
 [Route("api/v1/auth")]
-[EnableRateLimiting("auth")]
 public sealed class AuthController : ApiControllerBase
 {
     private readonly AuthService _auth;
@@ -22,6 +21,7 @@ public sealed class AuthController : ApiControllerBase
 
     [HttpPost("register")]
     [AllowAnonymous]
+    [EnableRateLimiting("auth")]
     public async Task<IActionResult> Register([FromBody] RegisterRequest body, CancellationToken ct)
     {
         var outcome = await _auth.RegisterAsync(body, ct);
@@ -31,6 +31,7 @@ public sealed class AuthController : ApiControllerBase
 
     [HttpPost("login")]
     [AllowAnonymous]
+    [EnableRateLimiting("auth")]
     public async Task<IActionResult> Login([FromBody] LoginRequest body, CancellationToken ct)
     {
         var outcome = await _auth.LoginAsync(body.Email, body.Password, ct);
@@ -42,6 +43,7 @@ public sealed class AuthController : ApiControllerBase
 
     [HttpPost("2fa/verify")]
     [AllowAnonymous]
+    [EnableRateLimiting("auth")]
     public async Task<IActionResult> VerifyTwoFactor([FromBody] TwoFactorRequest body, CancellationToken ct)
     {
         var outcome = await _auth.VerifyTwoFactorAsync(body.ChallengeId, body.Code, ct);
@@ -63,6 +65,8 @@ public sealed class AuthController : ApiControllerBase
     [AllowAnonymous]
     public IActionResult Logout()
     {
+        Request.Cookies.TryGetValue(_settings.RefreshCookieName, out var token);
+        _auth.RevokeRefresh(token);
         Response.Cookies.Delete(_settings.RefreshCookieName, CookieOptions(DateTimeOffset.UnixEpoch));
         return NoContent();
     }
@@ -73,6 +77,7 @@ public sealed class AuthController : ApiControllerBase
 
     [HttpPost("forgot-password")]
     [AllowAnonymous]
+    [EnableRateLimiting("auth")]
     public async Task<IActionResult> Forgot([FromBody] ForgotPasswordRequest body, CancellationToken ct)
     {
         await _auth.ForgotAsync(body.Email, ct);
@@ -81,6 +86,7 @@ public sealed class AuthController : ApiControllerBase
 
     [HttpPost("reset-password")]
     [AllowAnonymous]
+    [EnableRateLimiting("auth")]
     public async Task<IActionResult> Reset([FromBody] ResetPasswordRequest body, CancellationToken ct)
     {
         await _auth.ResetAsync(body.Token, body.Password, ct);

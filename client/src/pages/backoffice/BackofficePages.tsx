@@ -91,6 +91,7 @@ export function CaseDetailPage() {
   const [to, setTo] = useState<CaseInternalStatus>('REGISTERED')
   const [managerId, setManagerId] = useState('')
   const [reason, setReason] = useState('')
+  const [slaDueAt, setSlaDueAt] = useState('')
   const [error, setError] = useState<string | null>(null)
   const row = query.data
   if (query.isLoading) return <Skeleton className="h-40" />
@@ -126,9 +127,19 @@ export function CaseDetailPage() {
           {t('backoffice.assign')}
         </Button>
         <Field label={t('backoffice.extend')}>
-          <Input type="datetime-local" onChange={(e) => setReason(e.target.value)} />
+          <Input type="datetime-local" value={slaDueAt} onChange={(e) => setSlaDueAt(e.target.value)} />
         </Field>
-        <Button type="button" variant="secondary" onClick={() => run(() => api.extendCase(row.id, new Date(reason).toISOString(), 'Supervisor extension'))}>
+        <Button
+          type="button"
+          variant="secondary"
+          onClick={() => {
+            if (!slaDueAt) {
+              setError('Set the new SLA due date')
+              return
+            }
+            run(() => api.extendCase(row.id, new Date(slaDueAt).toISOString(), reason || 'Supervisor extension'))
+          }}
+        >
           {t('backoffice.extend')}
         </Button>
         <Field label={t('backoffice.reopen')}>
@@ -200,7 +211,7 @@ export function AdminPage() {
   const cms = useQuery({ queryKey: ['admin-cms'], queryFn: api.adminCms })
   const rules = useQuery({ queryKey: ['admin-rules'], queryFn: api.adminRuleSets })
   const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('ChangeMe_User_123')
+  const [password, setPassword] = useState('')
   const [role, setRole] = useState('CASE_MANAGER')
   return (
     <div className="space-y-6">
@@ -215,7 +226,7 @@ export function AdminPage() {
           }}
         >
           <Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="email" />
-          <Input value={password} onChange={(e) => setPassword(e.target.value)} />
+          <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={10} autoComplete="new-password" />
           <Select value={role} onChange={(e) => setRole(e.target.value)}>
             <option>CASE_MANAGER</option>
             <option>SUPERVISOR</option>

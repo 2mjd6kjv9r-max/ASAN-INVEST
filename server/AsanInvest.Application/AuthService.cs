@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Text.Json;
 using AsanInvest.Domain;
 using AsanInvest.Domain.Entities;
@@ -10,11 +11,15 @@ public sealed class AuthService
 {
     private readonly IAppDbContext _db;
     private readonly AppSettings _settings;
+    private readonly AuthChallengeStore _challenges;
+    private readonly IEmailSender _email;
 
-    public AuthService(IAppDbContext db, IOptions<AppSettings> settings)
+    public AuthService(IAppDbContext db, IOptions<AppSettings> settings, AuthChallengeStore challenges, IEmailSender email)
     {
         _db = db;
         _settings = settings.Value;
+        _challenges = challenges;
+        _email = email;
     }
 
     public async Task<AuthOutcome> RegisterAsync(RegisterRequest req, CancellationToken ct)
@@ -44,7 +49,12 @@ public sealed class AuthService
 
         if (!autoVerify)
         {
-            _ = Tokens.SignPurpose(_settings, user.Id, "email_verify", lifetime: "24h");
+            var verify = Tokens.SignPurpose(_settings, user.Id, "email_verify", lifetime: "24h");
+            await _email.SendAsync(
+                user.Email,
+                "Verify your ASAN Invest email",
+                $"Open {_settings.ClientOrigin}/verify-email?token={Uri.EscapeDataString(verify)} to confirm this address.",
+                ct);
         }
 
         if (req.GuestSessionToken is { } token && Guid.TryParse(token, out var sid))
@@ -78,8 +88,9 @@ public sealed class AuthService
         if (Roles.RequiresTwoFactor(roles))
         {
             var testing = string.Equals(Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT"), "Testing", StringComparison.OrdinalIgnoreCase);
-            var code = testing ? "123456" : Random.Shared.Next(100000, 999999).ToString();
-            var challengeId = Tokens.SignPurpose(_settings, user.Id, "two_factor", Tokens.Hash(code), "10m");
+            var code = testing ? "123456" : NewOtp();
+            var challengeId = _challenges.IssueOtp(user.Id, Tokens.Hash(code), TimeSpan.FromMinutes(10));
+            await _email.SendAsync(user.Email, "ASAN Invest sign-in code", $"Your sign-in code expires in 10 minutes. Code: {code}", ct);
             return new AuthOutcome { TwoFactorRequired = true, ChallengeId = challengeId };
         }
 
@@ -89,10 +100,8 @@ public sealed class AuthService
 
     public async Task<AuthOutcome> VerifyTwoFactorAsync(string challengeId, string code, CancellationToken ct)
     {
-        var jwt = Tokens.Require(challengeId, _settings.JwtAccessSecret, "two_factor");
-        var hash = jwt.Payload.TryGetValue("codeHash", out var h) ? h?.ToString() : null;
-        if (hash != Tokens.Hash(code)) throw AppException.Unauthorized("Two-factor code is invalid", "TWO_FACTOR_INVALID");
-        var userId = Guid.Parse(jwt.Subject);
+        if (!_challenges.ConsumeOtp(challengeId, Tokens.Hash(code), out var userId))
+            throw AppException.Unauthorized("Two-factor code is invalid", "TWO_FACTOR_INVALID");
         var user = await _db.Users.Include(u => u.RoleAssignments).Include(u => u.Profile).FirstOrDefaultAsync(u => u.Id == userId, ct)
             ?? throw AppException.Unauthorized();
         user.TwoFactorEnabled = true;
@@ -106,6 +115,8 @@ public sealed class AuthService
         try
         {
             var jwt = Tokens.Require(refreshToken, _settings.JwtRefreshSecret, "refresh");
+            var jti = jwt.Id;
+            if (_challenges.IsRefreshRevoked(jti)) throw AppException.Unauthorized("Refresh token is invalid", "REFRESH_INVALID");
             var user = await _db.Users.Include(u => u.RoleAssignments).Include(u => u.Profile)
                 .FirstOrDefaultAsync(u => u.Id == Guid.Parse(jwt.Subject), ct);
             if (user is null || user.Status == UserStatus.DISABLED) throw AppException.Unauthorized("Refresh token is invalid", "REFRESH_INVALID");
@@ -122,11 +133,33 @@ public sealed class AuthService
         return SerializeUser(user);
     }
 
-    public Task ForgotAsync(string email, CancellationToken ct)
+    public async Task ForgotAsync(string email, CancellationToken ct)
     {
-        _ = email;
-        _ = ct;
-        return Task.CompletedTask;
+        var user = await _db.Users.FirstOrDefaultAsync(u => u.Email == email.Trim().ToLowerInvariant(), ct);
+        if (user is null || user.Status == UserStatus.DISABLED) return;
+        var token = Tokens.SignPurpose(_settings, user.Id, "password_reset", lifetime: "1h");
+        await _email.SendAsync(
+            user.Email,
+            "Reset your ASAN Invest password",
+            $"Open {_settings.ClientOrigin}/reset-password?token={Uri.EscapeDataString(token)} to choose a new password. This link expires in one hour.",
+            ct);
+    }
+
+    public void RevokeRefresh(string? refreshToken)
+    {
+        if (string.IsNullOrWhiteSpace(refreshToken)) return;
+        try
+        {
+            var jwt = Tokens.Require(refreshToken, _settings.JwtRefreshSecret, "refresh");
+            var exp = jwt.ValidTo == DateTime.MinValue
+                ? DateTimeOffset.UtcNow.Add(Tokens.ParseDuration(_settings.JwtRefreshExpiresIn))
+                : new DateTimeOffset(DateTime.SpecifyKind(jwt.ValidTo, DateTimeKind.Utc));
+            _challenges.RevokeRefresh(jwt.Id, exp);
+        }
+        catch
+        {
+            // Cookie delete still proceeds.
+        }
     }
 
     public async Task ResetAsync(string token, string password, CancellationToken ct)
@@ -167,11 +200,18 @@ public sealed class AuthService
     public async Task<object> PatchGuestAsync(Guid id, JsonElement answers, string? email, string? locale, CancellationToken ct)
     {
         var session = await _db.GuestSessions.FirstOrDefaultAsync(s => s.Id == id, ct) ?? throw AppException.NotFound();
+        if (session.ExpiresAt <= DateTimeOffset.UtcNow || session.ConvertedUserId is not null) throw AppException.NotFound();
         session.Answers = answers.GetRawText();
         if (email is not null) session.Email = email.ToLowerInvariant();
         if (locale is not null) session.Locale = locale;
         await _db.SaveChangesAsync(ct);
         return new { token = session.Id, answers = JsonSerializer.Deserialize<object>(session.Answers) };
+    }
+
+    private static string NewOtp()
+    {
+        var value = RandomNumberGenerator.GetInt32(100000, 1000000);
+        return value.ToString();
     }
 
     private TokenResult TokenPayload(User user)

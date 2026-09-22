@@ -2,7 +2,7 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 import { useAuth } from '@/app/providers'
 import { Alert, Button, ButtonLink, Field, Input, PageHeader, Select } from '@/components/ui'
 import { api, isApiError } from '@/lib/api'
-import { readGuestAnswers, readGuestToken, writeGuestAnswers } from '@/lib/guest'
+import { readGuestAnswers, readGuestToken, writeGuestAnswers, ensureGuestToken } from '@/lib/guest'
 import type { Classification, RouteResult } from '@/lib/types'
 import { pickName } from '@/lib/types'
 import { useMemo, useState } from 'react'
@@ -67,8 +67,9 @@ export function RoutePage() {
     onSuccess: (data) => {
       setResult(data)
       writeGuestAnswers({ ...readGuestAnswers(), route: answers })
-      const token = readGuestToken()
-      if (token) void api.patchGuest(token, { route: answers })
+      void ensureGuestToken().then((token) => {
+        if (token) void api.patchGuest(token, { route: answers })
+      })
     },
     onError: (err) => setError(isApiError(err) ? err.message : t('common.error')),
   })

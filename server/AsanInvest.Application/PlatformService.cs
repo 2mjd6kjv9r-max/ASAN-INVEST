@@ -255,7 +255,7 @@ public sealed class PlatformService
     public async Task<object> ProjectsAsync(CurrentUser user, CancellationToken ct)
     {
         var profile = await ProfileOf(user.Id, ct);
-        var staff = user.Roles.Any(r => r is UserRole.CASE_MANAGER or UserRole.SUPERVISOR or UserRole.SYSADMIN or UserRole.ANALYST);
+        var staff = user.Roles.Any(r => r is UserRole.CASE_MANAGER or UserRole.SUPERVISOR or UserRole.SYSADMIN);
         var rows = await _db.Projects.Include(p => p.Stages).ThenInclude(s => s.Procedure)
             .Include(p => p.Stages).ThenInclude(s => s.Application)!.ThenInclude(a => a!.Case)
             .Where(p => staff || p.ProfileId == profile.Id).OrderByDescending(p => p.CreatedAt).ToListAsync(ct);
@@ -287,9 +287,7 @@ public sealed class PlatformService
         };
         _db.Projects.Add(project);
         var codes = JsonSerializer.Deserialize<JsonElement>(kya.Procedures);
-        var list = new List<string>();
-        if (codes.ValueKind == JsonValueKind.Array)
-            list = codes.EnumerateArray().Select(x => x.TryGetProperty("code", out var c) ? c.GetString() : x.GetString()).Where(s => s is not null).Cast<string>().ToList();
+        var list = KyaProcedureCodes.Parse(codes).ToList();
         var catalog = await _db.Procedures.Where(p => list.Contains(p.Code)).ToListAsync(ct);
         var order = 1;
         foreach (var procedure in catalog)
@@ -343,6 +341,16 @@ public sealed class PlatformService
         var profile = await ProfileOf(user.Id, ct);
         var type = await _db.ApplicationTypes.FirstOrDefaultAsync(t => t.Code == typeCode, ct) ?? throw AppException.NotFound("Application type not found");
         if (type.Workflow != WorkflowKind.STANDARD) throw AppException.BadRequest("WORKFLOW_PHASE2", "This application type is not in Phase 1");
+        Stage? stage = null;
+        if (stageId is not null)
+        {
+            stage = await _db.Stages.Include(s => s.Project).FirstOrDefaultAsync(s => s.Id == stageId, ct)
+                ?? throw AppException.NotFound("Stage not found");
+            if (stage.Project.ProfileId != profile.Id) throw AppException.Forbidden();
+            if (projectId is not null && projectId != stage.ProjectId)
+                throw AppException.BadRequest("STAGE_PROJECT_MISMATCH", "Stage does not belong to this project");
+            projectId = stage.ProjectId;
+        }
         if (projectId is not null)
         {
             var project = await _db.Projects.FirstOrDefaultAsync(p => p.Id == projectId, ct);
@@ -363,11 +371,7 @@ public sealed class PlatformService
         catch (InvalidOperationException ex) { throw AppException.BadRequest("UNLINKED_APPLICATION", ex.Message); }
         _db.Applications.Add(app);
         await _db.SaveChangesAsync(ct);
-        if (stageId is not null)
-        {
-            var stage = await _db.Stages.FirstAsync(s => s.Id == stageId, ct);
-            stage.ApplicationId = app.Id;
-        }
+        if (stage is not null) stage.ApplicationId = app.Id;
         if (answers.ValueKind == JsonValueKind.Object) await WriteDraft(profile.Id, app.Id, answers, ct);
         await _db.SaveChangesAsync(ct);
         return InvestorDto(app, type, null, answers.ValueKind == JsonValueKind.Object ? answers : default);
@@ -465,9 +469,7 @@ public sealed class PlatformService
         if (row.Snapshot is not null) throw AppException.Conflict("Application already submitted", "ALREADY_SUBMITTED");
         if (row.Type.IdentificationLevel == IdentificationLevel.LEGAL && user.IdentificationLevel != IdentificationLevel.LEGAL)
             throw new AppException(403, "IDENTIFICATION_LEVEL", "This action needs a legal identification level. Continue via e-signature or a representative on your Route screen.", new { current = user.IdentificationLevel, required = IdentificationLevel.LEGAL, next = "route" });
-        var year = DateTime.UtcNow.Year;
-        var count = await _db.Applications.CountAsync(a => a.PublicNumber != null && a.PublicNumber.StartsWith($"INV-{year}-"), ct);
-        var publicNumber = Workflow.NextApplicationNumber(year, count + 1);
+        var publicNumber = await _db.NextApplicationPublicNumberAsync(ct);
         var needsEval = row.Type.RequiresEvaluation;
         var status = needsEval ? CaseInternalStatus.IN_EVALUATION : CaseInternalStatus.REGISTERED;
         var createdCase = new Case
@@ -508,8 +510,18 @@ public sealed class PlatformService
     public async Task<object> CasesAsync(CurrentUser user, string? status, CancellationToken ct)
     {
         IQueryable<Case> q = _db.Cases.Include(c => c.Application).ThenInclude(a => a.Type).Include(c => c.CaseManager).Include(c => c.Tasks);
-        if (user.Roles.Contains(UserRole.CASE_MANAGER) && !user.Roles.Contains(UserRole.SUPERVISOR) && !user.Roles.Contains(UserRole.SYSADMIN))
-            q = q.Where(c => c.CaseManagerId == user.Id);
+        var elevated = user.Roles.Contains(UserRole.SUPERVISOR) || user.Roles.Contains(UserRole.SYSADMIN);
+        if (!elevated)
+        {
+            if (user.Roles.Contains(UserRole.CASE_MANAGER) && user.Roles.Contains(UserRole.INSTITUTION_REP))
+                q = q.Where(c => c.CaseManagerId == user.Id || (user.InstitutionId != null && c.Tasks.Any(t => t.InstitutionId == user.InstitutionId)));
+            else if (user.Roles.Contains(UserRole.CASE_MANAGER))
+                q = q.Where(c => c.CaseManagerId == user.Id);
+            else if (user.Roles.Contains(UserRole.INSTITUTION_REP))
+                q = q.Where(c => user.InstitutionId != null && c.Tasks.Any(t => t.InstitutionId == user.InstitutionId));
+            else
+                q = q.Where(_ => false);
+        }
         if (status is not null && Enum.TryParse<CaseInternalStatus>(status, out var st)) q = q.Where(c => c.InternalStatus == st);
         var rows = await q.OrderBy(c => c.SlaDueAt).ToListAsync(ct);
         return rows.Select(c => new
@@ -528,9 +540,7 @@ public sealed class PlatformService
             .Include(c => c.Tasks).ThenInclude(t => t.Institution)
             .Include(c => c.Evaluations).Include(c => c.CaseManager)
             .FirstOrDefaultAsync(c => c.Id == id, ct) ?? throw AppException.NotFound("Case not found");
-        if (user.Roles.Contains(UserRole.INSTITUTION_REP) && user.InstitutionId is not null
-            && row.Tasks.All(t => t.InstitutionId != user.InstitutionId))
-            throw AppException.Forbidden();
+        if (!CanAccessCase(user, row)) throw AppException.Forbidden();
         return new
         {
             row.Id, row.ApplicationId, row.InternalStatus, row.CaseManagerId, row.SlaDueAt, row.RegisteredAt,
@@ -559,6 +569,11 @@ public sealed class PlatformService
     public async Task<object> AssignCaseAsync(Guid id, Guid caseManagerId, CancellationToken ct)
     {
         var row = await _db.Cases.FirstOrDefaultAsync(c => c.Id == id, ct) ?? throw AppException.NotFound("Case not found");
+        var manager = await _db.Users.Include(u => u.RoleAssignments).FirstOrDefaultAsync(u => u.Id == caseManagerId, ct)
+            ?? throw AppException.BadRequest("ASSIGNEE_INVALID", "Case manager was not found");
+        var roles = Roles.Active(manager.RoleAssignments, DateTimeOffset.UtcNow);
+        if (!roles.Contains(UserRole.CASE_MANAGER) && !roles.Contains(UserRole.SUPERVISOR) && !roles.Contains(UserRole.SYSADMIN))
+            throw AppException.BadRequest("ASSIGNEE_INVALID", "Assignee must have an active case manager role");
         row.CaseManagerId = caseManagerId;
         row.InternalStatus = CaseInternalStatus.ASSIGNED_FOR_EXECUTION;
         await _db.SaveChangesAsync(ct);
@@ -581,9 +596,9 @@ public sealed class PlatformService
     public async Task<object> ExtraInfoRespondAsync(CurrentUser user, Guid caseId, Guid requestId, JsonElement response, CancellationToken ct)
     {
         var task = await _db.Tasks.Include(t => t.Case).ThenInclude(c => c.Application).ThenInclude(a => a.Profile)
+            .Include(t => t.Case).ThenInclude(c => c.Application).ThenInclude(a => a.Project)
             .FirstOrDefaultAsync(t => t.Id == requestId && t.CaseId == caseId && t.Status == "extra_info", ct) ?? throw AppException.NotFound();
-        var ownerId = task.Case.Application.Profile?.UserId;
-        if (ownerId != user.Id) throw AppException.Forbidden();
+        if (!await OwnsApplicationAsync(user, task.Case.Application, ct)) throw AppException.Forbidden();
         task.Status = "extra_info_responded";
         task.Opinion = response.GetRawText();
         task.Case.InternalStatus = CaseInternalStatus.UNDER_REVIEW;
@@ -644,9 +659,11 @@ public sealed class PlatformService
 
     public async Task<object> ComplaintAsync(CurrentUser user, Guid id, string description, CancellationToken ct)
     {
-        var row = await _db.Cases.Include(c => c.Application).ThenInclude(a => a.Profile).FirstOrDefaultAsync(c => c.Id == id, ct)
+        var row = await _db.Cases.Include(c => c.Application).ThenInclude(a => a.Profile)
+            .Include(c => c.Application).ThenInclude(a => a.Project)
+            .FirstOrDefaultAsync(c => c.Id == id, ct)
             ?? throw AppException.NotFound("Case not found");
-        if (row.Application.Profile?.UserId != user.Id) throw AppException.Forbidden();
+        if (!await OwnsApplicationAsync(user, row.Application, ct)) throw AppException.Forbidden();
         var supervisor = await _db.UserRoleAssignments.FirstOrDefaultAsync(r => r.Role == UserRole.SUPERVISOR, ct);
         var institution = await _db.Classifications.FirstOrDefaultAsync(c => c.Kind == ClassificationKind.INSTITUTION, ct);
         if (supervisor is null || institution is null) throw AppException.BadRequest("NOT_CONFIGURED", "Supervisor queue is not configured");
@@ -694,6 +711,9 @@ public sealed class PlatformService
     public async Task<object> EvaluationOpinionAsync(CurrentUser user, Guid id, string opinion, bool continueCase, CancellationToken ct)
     {
         var row = await _db.Evaluations.FirstOrDefaultAsync(e => e.Id == id, ct) ?? throw AppException.NotFound("Evaluation not found");
+        var elevated = user.Roles.Contains(UserRole.SUPERVISOR) || user.Roles.Contains(UserRole.SYSADMIN);
+        if (!elevated && row.EvaluatorId is not null && row.EvaluatorId != user.Id)
+            throw AppException.Forbidden("This evaluation is assigned to another reviewer");
         row.Opinion = opinion;
         row.EvaluatorId = user.Id;
         row.Status = "completed";
@@ -737,7 +757,10 @@ public sealed class PlatformService
 
     public async Task<object> MessagesAsync(CurrentUser user, Guid applicationId, CancellationToken ct)
     {
+        var application = await _db.Applications.Include(a => a.Project).FirstOrDefaultAsync(a => a.Id == applicationId, ct)
+            ?? throw AppException.NotFound("Application not found");
         var staff = user.Roles.Any(r => r is UserRole.CASE_MANAGER or UserRole.SUPERVISOR or UserRole.SYSADMIN);
+        if (!staff && !await OwnsApplicationAsync(user, application, ct)) throw AppException.NotFound("Application not found");
         var q = _db.Messages.Where(m => m.ApplicationId == applicationId);
         if (!staff) q = q.Where(m => !m.IsInternal);
         var rows = await q.OrderBy(m => m.CreatedAt).ToListAsync(ct);
@@ -746,7 +769,10 @@ public sealed class PlatformService
 
     public async Task<object> PostMessageAsync(CurrentUser user, Guid applicationId, string body, bool? internalNote, CancellationToken ct)
     {
+        var application = await _db.Applications.Include(a => a.Project).FirstOrDefaultAsync(a => a.Id == applicationId, ct)
+            ?? throw AppException.NotFound("Application not found");
         var staff = user.Roles.Any(r => r is UserRole.CASE_MANAGER or UserRole.SUPERVISOR or UserRole.SYSADMIN);
+        if (!staff && !await OwnsApplicationAsync(user, application, ct)) throw AppException.NotFound("Application not found");
         var msg = new Message { ApplicationId = applicationId, SenderUserId = user.Id, Body = body, IsInternal = internalNote == true && staff };
         _db.Messages.Add(msg);
         await _db.SaveChangesAsync(ct);
@@ -960,6 +986,23 @@ public sealed class PlatformService
 
     private async Task<Profile> ProfileOf(Guid userId, CancellationToken ct) =>
         await _db.Profiles.FirstOrDefaultAsync(p => p.UserId == userId, ct) ?? throw AppException.NotFound("Profile not found");
+
+    private async Task<bool> OwnsApplicationAsync(CurrentUser user, ApplicationEntity app, CancellationToken ct)
+    {
+        var profile = await ProfileOf(user.Id, ct);
+        return app.ProfileId == profile.Id || app.Project?.ProfileId == profile.Id;
+    }
+
+    private static bool CanAccessCase(CurrentUser user, Case row)
+    {
+        if (user.Roles.Contains(UserRole.SUPERVISOR) || user.Roles.Contains(UserRole.SYSADMIN)) return true;
+        if (user.Roles.Contains(UserRole.CASE_MANAGER) && row.CaseManagerId == user.Id) return true;
+        if (user.Roles.Contains(UserRole.INSTITUTION_REP) && user.InstitutionId is not null
+            && row.Tasks.Any(t => t.InstitutionId == user.InstitutionId)) return true;
+        if (user.Roles.Contains(UserRole.EVALUATOR)
+            && row.Evaluations.Any(e => e.EvaluatorId is null || e.EvaluatorId == user.Id)) return true;
+        return false;
+    }
 
     private async Task<RuleSet> LatestRule(RuleSetKind kind, CancellationToken ct) =>
         await _db.RuleSets.Where(r => r.Kind == kind && r.EffectiveAt <= DateTimeOffset.UtcNow).OrderByDescending(r => r.EffectiveAt).FirstOrDefaultAsync(ct)

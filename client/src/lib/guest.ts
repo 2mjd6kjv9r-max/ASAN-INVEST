@@ -1,3 +1,5 @@
+import { api } from '@/lib/api'
+
 const KEY = 'asan-invest.guest-token'
 
 export function readGuestToken() {
@@ -40,5 +42,17 @@ export function writeGuestAnswers(answers: Record<string, unknown>) {
     window.sessionStorage.setItem(ANSWERS_KEY, JSON.stringify(answers))
   } catch {
     /* ignore */
+  }
+}
+
+export async function ensureGuestToken(): Promise<string | null> {
+  const existing = readGuestToken()
+  if (existing) return existing
+  try {
+    const guest = await api.createGuest()
+    writeGuestToken(guest.token)
+    return guest.token
+  } catch {
+    return null
   }
 }
