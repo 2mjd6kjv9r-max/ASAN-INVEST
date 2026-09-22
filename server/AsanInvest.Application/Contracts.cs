@@ -93,7 +93,8 @@ public sealed record CaseOpinionRequest(string Opinion);
 public sealed record SystemicProblemCreateRequest(string Category, Guid InstitutionId, string Cause, ReformStatus? ReformStatus);
 public sealed record SystemicProblemLinkRequest(Guid ApplicationId);
 public sealed record NextContactRequest(DateTimeOffset At, string Purpose);
-public sealed record PaymentCreateRequest(PaymentKind Kind, string Amount, string Currency, Guid? ApplicationId, Guid? ProjectId);
+/// Amount/currency from the client are ignored; the server prices STATE_FEE from the catalogue.
+public sealed record PaymentCreateRequest(PaymentKind Kind, Guid? ApplicationId, Guid? ProjectId, string? Amount = null, string? Currency = null);
 public sealed record PaymentConfirmRequest(PaymentStatus Status, string? ProviderRef, string? FailureReason);
 public sealed record PartnerCreateRequest(JsonElement Names, string ServiceKind, string PriceAmount, string PriceCurrency, string? DurationNote, string? Rating, AccreditationStatus? AccreditationStatus, bool? IsActive);
 public sealed record PartnerBindRequest(Guid PartnerId);

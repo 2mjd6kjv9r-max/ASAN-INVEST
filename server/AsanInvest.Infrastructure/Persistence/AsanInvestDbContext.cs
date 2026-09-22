@@ -125,8 +125,10 @@ public sealed class AsanInvestDbContext : DbContext, Application.IAppDbContext
             e.Property(x => x.CreatedAt).HasColumnName("created_at");
             e.Property(x => x.UpdatedAt).HasColumnName("updated_at");
             e.HasIndex(x => x.Email).IsUnique();
-            e.HasIndex(x => x.VirtualFin).IsUnique();
-            e.HasIndex(x => x.Fin).IsUnique();
+            e.HasIndex(x => x.VirtualFin).IsUnique().HasDatabaseName("users_virtual_fin_key")
+                .HasFilter("virtual_fin IS NOT NULL AND btrim(virtual_fin) <> ''");
+            e.HasIndex(x => x.Fin).IsUnique().HasDatabaseName("users_fin_key")
+                .HasFilter("fin IS NOT NULL AND btrim(fin) <> ''");
             e.HasOne(x => x.Institution).WithMany().HasForeignKey(x => x.InstitutionId).OnDelete(DeleteBehavior.SetNull);
             e.HasOne(x => x.Profile).WithOne(p => p.User).HasForeignKey<Profile>(p => p.UserId);
         });
@@ -599,6 +601,8 @@ public sealed class AsanInvestDbContext : DbContext, Application.IAppDbContext
             e.Property(x => x.ProjectId).HasColumnName("project_id");
             e.Property(x => x.ApplicationId).HasColumnName("application_id");
             e.Property(x => x.CreatedAt).HasColumnName("created_at");
+            e.HasIndex(x => x.ProviderRef).IsUnique().HasDatabaseName("payments_provider_ref_key")
+                .HasFilter("provider_ref IS NOT NULL AND btrim(provider_ref) <> ''");
         });
 
         modelBuilder.Entity<SystemicProblem>(e =>

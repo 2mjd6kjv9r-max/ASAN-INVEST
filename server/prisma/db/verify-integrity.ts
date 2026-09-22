@@ -140,19 +140,41 @@ async function main() {
     authLabels.has("E_NONRESIDENT") && authLabels.has("FOREIGN_ESIGN"),
   );
 
-  const virtualFinIdx = await prisma.$queryRaw<Array<{ exists: boolean }>>`
-    SELECT EXISTS (
-      SELECT 1 FROM pg_indexes WHERE indexname = 'users_virtual_fin_key'
-    ) AS exists
+  const virtualFinIdx = await prisma.$queryRaw<Array<{ pred: string | null; indisunique: boolean }>>`
+    SELECT pg_get_expr(ix.indpred, ix.indrelid) AS pred, ix.indisunique
+    FROM pg_index ix
+    JOIN pg_class i ON i.oid = ix.indexrelid
+    WHERE i.relname = 'users_virtual_fin_key'
   `;
-  record("unique users.virtual_fin", virtualFinIdx[0]?.exists === true);
+  record(
+    "unique users.virtual_fin excludes empty",
+    virtualFinIdx[0]?.indisunique === true && (virtualFinIdx[0].pred ?? "").includes("btrim"),
+    virtualFinIdx[0]?.pred ?? "missing",
+  );
 
-  const finIdx = await prisma.$queryRaw<Array<{ exists: boolean }>>`
-    SELECT EXISTS (
-      SELECT 1 FROM pg_indexes WHERE indexname = 'users_fin_key'
-    ) AS exists
+  const finIdx = await prisma.$queryRaw<Array<{ pred: string | null; indisunique: boolean }>>`
+    SELECT pg_get_expr(ix.indpred, ix.indrelid) AS pred, ix.indisunique
+    FROM pg_index ix
+    JOIN pg_class i ON i.oid = ix.indexrelid
+    WHERE i.relname = 'users_fin_key'
   `;
-  record("unique users.fin", finIdx[0]?.exists === true);
+  record(
+    "unique users.fin excludes empty",
+    finIdx[0]?.indisunique === true && (finIdx[0].pred ?? "").includes("btrim"),
+    finIdx[0]?.pred ?? "missing",
+  );
+
+  const providerRefIdx = await prisma.$queryRaw<Array<{ pred: string | null; indisunique: boolean }>>`
+    SELECT pg_get_expr(ix.indpred, ix.indrelid) AS pred, ix.indisunique
+    FROM pg_index ix
+    JOIN pg_class i ON i.oid = ix.indexrelid
+    WHERE i.relname = 'payments_provider_ref_key'
+  `;
+  record(
+    "unique payments.provider_ref excludes empty",
+    providerRefIdx[0]?.indisunique === true && (providerRefIdx[0].pred ?? "").includes("btrim"),
+    providerRefIdx[0]?.pred ?? "missing",
+  );
 
   const eResPage = await prisma.cmsContent.findUnique({ where: { slug: "e-residency" } });
   record("e-residency CMS page published", eResPage?.status === "PUBLISHED");

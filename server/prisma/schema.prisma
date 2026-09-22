@@ -305,9 +305,11 @@ model User {
   pepSanctionsCheckedAt DateTime?           @map("pep_sanctions_checked_at") @db.Timestamptz(6)
   pepSanctionsListVersion String?           @map("pep_sanctions_list_version")
   /// TZ §2: stored if issued; does **not** change resident / non-resident labelling.
-  virtualFin           String?              @unique @map("virtual_fin")
+  /// Unique when non-empty (filtered unique index `users_virtual_fin_key`).
+  virtualFin           String?              @map("virtual_fin")
   /// Resident ASAN Login / SİMA FIN (FR-AUTH-02) when live.
-  fin                  String?              @unique
+  /// Unique when non-empty (filtered unique index `users_fin_key`).
+  fin                  String?
   esignIssuer          String?              @map("esign_issuer")
   identificationUpgradedAt DateTime?        @map("identification_upgraded_at") @db.Timestamptz(6)
   createdAt            DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -758,6 +760,7 @@ model Payment {
   currency           Currency
   status             PaymentStatus @default(EXTERNAL)
   provider           String?
+  /// Unique when non-empty (filtered unique index `payments_provider_ref_key`).
   providerRef        String?       @map("provider_ref")
   rawPayload         Json?         @map("raw_payload")
   failureReason      String?       @map("failure_reason")
@@ -773,7 +776,6 @@ model Payment {
 
   @@index([projectId])
   @@index([applicationId])
-  @@index([providerRef])
   @@map("payments")
 }
 

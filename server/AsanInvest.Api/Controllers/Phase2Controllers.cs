@@ -140,6 +140,7 @@ public sealed class Phase2Controller : ApiControllerBase
 
     [HttpPost("payments/{id:guid}/confirm")]
     [AllowAnonymous]
+    [RequestSizeLimit(PaymentIntegrity.MaxRawBodyChars)]
     public async Task<IActionResult> ConfirmPayment(Guid id, CancellationToken ct)
     {
         Request.EnableBuffering();
