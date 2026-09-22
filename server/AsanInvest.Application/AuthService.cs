@@ -259,6 +259,9 @@ public sealed class AuthService
         companyRegId = p.CompanyRegId,
         taxId = p.TaxId,
         companyActivity = p.CompanyActivity,
+        dvxRegistrationStatus = p.DvxRegistrationStatus,
+        dvxRegisteredAt = p.DvxRegisteredAt,
+        companyLegalForm = p.CompanyLegalForm,
         uboStructure = p.UboStructure is null ? null : JsonSerializer.Deserialize<object>(p.UboStructure),
         version = p.Version,
     };

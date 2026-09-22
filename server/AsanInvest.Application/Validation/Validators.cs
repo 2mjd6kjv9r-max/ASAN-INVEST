@@ -109,3 +109,86 @@ public sealed class AdminUserCreateRequestValidator : AbstractValidator<AdminUse
         RuleFor(x => x.Roles).NotEmpty();
     }
 }
+
+public sealed class BankSubmissionsRequestValidator : AbstractValidator<BankSubmissionsRequest>
+{
+    public BankSubmissionsRequestValidator()
+    {
+        RuleFor(x => x.BankInstitutionIds).NotNull().NotEmpty();
+        RuleFor(x => x.BankInstitutionIds).Must(ids => ids.Count <= 2)
+            .WithMessage("The bank pilot accepts at most two institutions");
+    }
+}
+
+public sealed class BankDecisionRequestValidator : AbstractValidator<BankDecisionRequest>
+{
+    public BankDecisionRequestValidator()
+    {
+        RuleFor(x => x.Outcome).NotEmpty().Must(o => o is "OPENED" or "EXTRA_INFO" or "REFUSED")
+            .WithMessage("Outcome must be OPENED, EXTRA_INFO or REFUSED");
+    }
+}
+
+public sealed class MediationNotesRequestValidator : AbstractValidator<MediationNotesRequest>
+{
+    public MediationNotesRequestValidator() => RuleFor(x => x.Body).NotEmpty().MinimumLength(3).MaximumLength(8000);
+}
+
+public sealed class CaseOpinionRequestValidator : AbstractValidator<CaseOpinionRequest>
+{
+    public CaseOpinionRequestValidator() => RuleFor(x => x.Opinion).NotEmpty().MinimumLength(10).MaximumLength(8000);
+}
+
+public sealed class SystemicProblemCreateRequestValidator : AbstractValidator<SystemicProblemCreateRequest>
+{
+    public SystemicProblemCreateRequestValidator()
+    {
+        RuleFor(x => x.Category).NotEmpty().MaximumLength(200);
+        RuleFor(x => x.InstitutionId).NotEmpty();
+        RuleFor(x => x.Cause).NotEmpty().MaximumLength(4000);
+    }
+}
+
+public sealed class NextContactRequestValidator : AbstractValidator<NextContactRequest>
+{
+    public NextContactRequestValidator()
+    {
+        RuleFor(x => x.Purpose).NotEmpty().MaximumLength(500);
+        RuleFor(x => x.At).NotEmpty();
+    }
+}
+
+public sealed class PaymentCreateRequestValidator : AbstractValidator<PaymentCreateRequest>
+{
+    public PaymentCreateRequestValidator()
+    {
+        RuleFor(x => x.Amount).NotEmpty().Matches(@"^\d+(\.\d{1,2})?$");
+        RuleFor(x => x.Currency).NotEmpty().Must(c => c is "AZN" or "USD" or "EUR");
+        RuleFor(x => x.Kind).IsInEnum();
+    }
+}
+
+public sealed class PartnerCreateRequestValidator : AbstractValidator<PartnerCreateRequest>
+{
+    public PartnerCreateRequestValidator()
+    {
+        RuleFor(x => x.ServiceKind).NotEmpty().MaximumLength(120);
+        RuleFor(x => x.PriceAmount).NotEmpty().Matches(@"^\d+(\.\d{1,2})?$");
+        RuleFor(x => x.PriceCurrency).NotEmpty().Must(c => c is "AZN" or "USD" or "EUR");
+    }
+}
+
+public sealed class FeeCreateRequestValidator : AbstractValidator<FeeCreateRequest>
+{
+    public FeeCreateRequestValidator()
+    {
+        RuleFor(x => x.Code).NotEmpty().MaximumLength(80);
+        RuleFor(x => x.Amount).NotEmpty().Matches(@"^\d+(\.\d{1,2})?$");
+        RuleFor(x => x.Currency).NotEmpty().Must(c => c is "AZN" or "USD" or "EUR");
+    }
+}
+
+public sealed class PartnerBindRequestValidator : AbstractValidator<PartnerBindRequest>
+{
+    public PartnerBindRequestValidator() => RuleFor(x => x.PartnerId).NotEmpty();
+}

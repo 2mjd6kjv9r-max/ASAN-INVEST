@@ -12,18 +12,21 @@ public sealed class PlatformService
 {
     private readonly IAppDbContext _db;
     private readonly AppSettings _settings;
+    private readonly Phase2Service _phase2;
     private static readonly JsonSerializerOptions JsonOpts = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
 
-    public PlatformService(IAppDbContext db, IOptions<AppSettings> settings)
+    public PlatformService(IAppDbContext db, IOptions<AppSettings> settings, Phase2Service phase2)
     {
         _db = db;
         _settings = settings.Value;
+        _phase2 = phase2;
     }
 
     public object CompanyRegistration() => new
     {
         url = _settings.DvxCompanyRegistrationUrl,
         message = "Company registration is completed on the existing DVX e-service. ASAN Invest does not register companies automatically.",
+        electronicSubmitAvailable = _settings.DvxSubmitEnabled,
     };
 
     public async Task<object> PageAsync(string slug, string locale, CancellationToken ct)
@@ -340,7 +343,8 @@ public sealed class PlatformService
     {
         var profile = await ProfileOf(user.Id, ct);
         var type = await _db.ApplicationTypes.FirstOrDefaultAsync(t => t.Code == typeCode, ct) ?? throw AppException.NotFound("Application type not found");
-        if (type.Workflow != WorkflowKind.STANDARD) throw AppException.BadRequest("WORKFLOW_PHASE2", "This application type is not in Phase 1");
+        if (!Phase2Types.AllowsWorkflow(type.Code, type.Workflow))
+            throw AppException.BadRequest("WORKFLOW_PHASE2", "This application type is not in Phase 1");
         Stage? stage = null;
         if (stageId is not null)
         {
@@ -366,7 +370,7 @@ public sealed class PlatformService
                     throw AppException.BadRequest("CAPITAL_BLOCKED", "Complete the incentive preview before opening a capital transfer step");
             }
         }
-        var app = new ApplicationEntity { TypeId = type.Id, ProjectId = projectId, ProfileId = projectId is null ? profile.Id : null, Source = source };
+        var app = new ApplicationEntity { TypeId = type.Id, Workflow = type.Workflow, ProjectId = projectId, ProfileId = projectId is null ? profile.Id : null, Source = source };
         try { Workflow.AssertLinked(app.ProjectId, app.ProfileId); }
         catch (InvalidOperationException ex) { throw AppException.BadRequest("UNLINKED_APPLICATION", ex.Message); }
         _db.Applications.Add(app);
@@ -519,6 +523,8 @@ public sealed class PlatformService
                 q = q.Where(c => c.CaseManagerId == user.Id);
             else if (user.Roles.Contains(UserRole.INSTITUTION_REP))
                 q = q.Where(c => user.InstitutionId != null && c.Tasks.Any(t => t.InstitutionId == user.InstitutionId));
+            else if (user.Roles.Contains(UserRole.OMBUDSMAN_OFFICER))
+                q = q.Where(c => c.Application.Workflow == WorkflowKind.OMBUDSMAN);
             else
                 q = q.Where(_ => false);
         }
@@ -659,6 +665,18 @@ public sealed class PlatformService
 
     public async Task<object> ComplaintAsync(CurrentUser user, Guid id, string description, CancellationToken ct)
     {
+        if (_settings.OmbudsmanEnabled)
+        {
+            try
+            {
+                return await _phase2.OpenOmbudsmanComplaintAsync(user, id, description, ct);
+            }
+            catch (AppException ex) when (ex.Code == "NOT_CONFIGURED")
+            {
+                // Z-04: never dead-end if the Ombudsman type is not seeded.
+            }
+        }
+
         var row = await _db.Cases.Include(c => c.Application).ThenInclude(a => a.Profile)
             .Include(c => c.Application).ThenInclude(a => a.Project)
             .FirstOrDefaultAsync(c => c.Id == id, ct)
@@ -759,7 +777,7 @@ public sealed class PlatformService
     {
         var application = await _db.Applications.Include(a => a.Project).FirstOrDefaultAsync(a => a.Id == applicationId, ct)
             ?? throw AppException.NotFound("Application not found");
-        var staff = user.Roles.Any(r => r is UserRole.CASE_MANAGER or UserRole.SUPERVISOR or UserRole.SYSADMIN);
+        var staff = user.Roles.Any(r => r is UserRole.CASE_MANAGER or UserRole.SUPERVISOR or UserRole.SYSADMIN or UserRole.OMBUDSMAN_OFFICER);
         if (!staff && !await OwnsApplicationAsync(user, application, ct)) throw AppException.NotFound("Application not found");
         var q = _db.Messages.Where(m => m.ApplicationId == applicationId);
         if (!staff) q = q.Where(m => !m.IsInternal);
@@ -771,7 +789,7 @@ public sealed class PlatformService
     {
         var application = await _db.Applications.Include(a => a.Project).FirstOrDefaultAsync(a => a.Id == applicationId, ct)
             ?? throw AppException.NotFound("Application not found");
-        var staff = user.Roles.Any(r => r is UserRole.CASE_MANAGER or UserRole.SUPERVISOR or UserRole.SYSADMIN);
+        var staff = user.Roles.Any(r => r is UserRole.CASE_MANAGER or UserRole.SUPERVISOR or UserRole.SYSADMIN or UserRole.OMBUDSMAN_OFFICER);
         if (!staff && !await OwnsApplicationAsync(user, application, ct)) throw AppException.NotFound("Application not found");
         var msg = new Message { ApplicationId = applicationId, SenderUserId = user.Id, Body = body, IsInternal = internalNote == true && staff };
         _db.Messages.Add(msg);
@@ -950,6 +968,10 @@ public sealed class PlatformService
         dataResidency = "Production PostgreSQL must be hosted in Azerbaijan (NFR-01).",
         sanctionsProviderConfigured = false,
         emailVerificationRequired = _settings.RequireEmailVerification,
+        ombudsmanEnabled = _settings.OmbudsmanEnabled,
+        dvxSubmitEnabled = _settings.DvxSubmitEnabled,
+        paymentsEnabled = _settings.PaymentsEnabled,
+        bankPilotEnabled = _settings.BankPilotEnabled,
     };
 
     public async Task<object> AnalyticsOverviewAsync(CancellationToken ct)
@@ -966,7 +988,7 @@ public sealed class PlatformService
             applications = new { total = applications, submitted, byStatus },
             kyaCalculations = kya,
             cases = new { total = cases.Count, completed = cases.Count(c => c.InternalStatus == CaseInternalStatus.COMPLETED), overdue, escalated = cases.Count(c => c.EscalatedAt is not null) },
-            publicKpisApproved = false,
+            publicKpisApproved = await _phase2.PublicKpisApprovedAsync(ct),
         };
     }
 
@@ -1001,6 +1023,7 @@ public sealed class PlatformService
             && row.Tasks.Any(t => t.InstitutionId == user.InstitutionId)) return true;
         if (user.Roles.Contains(UserRole.EVALUATOR)
             && row.Evaluations.Any(e => e.EvaluatorId is null || e.EvaluatorId == user.Id)) return true;
+        if (user.Roles.Contains(UserRole.OMBUDSMAN_OFFICER) && row.Application.Workflow == WorkflowKind.OMBUDSMAN) return true;
         return false;
     }
 

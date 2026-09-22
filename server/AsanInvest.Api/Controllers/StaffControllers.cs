@@ -14,17 +14,17 @@ public sealed class CasesController : ApiControllerBase
     public CasesController(PlatformService platform) => _platform = platform;
 
     [HttpGet("cases")]
-    [RequireRoles(UserRole.CASE_MANAGER, UserRole.SUPERVISOR, UserRole.SYSADMIN, UserRole.INSTITUTION_REP)]
+    [RequireRoles(UserRole.CASE_MANAGER, UserRole.SUPERVISOR, UserRole.SYSADMIN, UserRole.INSTITUTION_REP, UserRole.OMBUDSMAN_OFFICER)]
     public async Task<IActionResult> List([FromQuery] string? status, CancellationToken ct) =>
         OkData(await _platform.CasesAsync(CurrentUser, status, ct));
 
     [HttpGet("cases/{id:guid}")]
-    [RequireRoles(UserRole.CASE_MANAGER, UserRole.SUPERVISOR, UserRole.SYSADMIN, UserRole.INSTITUTION_REP, UserRole.EVALUATOR)]
+    [RequireRoles(UserRole.CASE_MANAGER, UserRole.SUPERVISOR, UserRole.SYSADMIN, UserRole.INSTITUTION_REP, UserRole.EVALUATOR, UserRole.OMBUDSMAN_OFFICER)]
     public async Task<IActionResult> Get(Guid id, CancellationToken ct) =>
         OkData(await _platform.GetCaseAsync(id, CurrentUser, ct));
 
     [HttpPost("cases/{id:guid}/transition")]
-    [RequireRoles(UserRole.CASE_MANAGER, UserRole.SUPERVISOR, UserRole.SYSADMIN)]
+    [RequireRoles(UserRole.CASE_MANAGER, UserRole.SUPERVISOR, UserRole.SYSADMIN, UserRole.OMBUDSMAN_OFFICER)]
     public async Task<IActionResult> Transition(Guid id, [FromBody] CaseTransitionRequest body, CancellationToken ct) =>
         OkData(await _platform.TransitionCaseAsync(CurrentUser, id, body.To, body.Reason, ct));
 

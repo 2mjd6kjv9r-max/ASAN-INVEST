@@ -82,6 +82,12 @@ public sealed class AppSettings
     public string UploadDir { get; set; } = "./uploads";
     public int MaxUploadBytes { get; set; } = 5 * 1024 * 1024;
     public string DvxCompanyRegistrationUrl { get; set; } = "https://www.e-taxes.gov.az/";
+    /// PLAN-PHASE2 §4.2.12 — missing protocols degrade to Phase 1 fallbacks.
+    public bool OmbudsmanEnabled { get; set; }
+    public bool DvxSubmitEnabled { get; set; }
+    public bool PaymentsEnabled { get; set; }
+    public bool BankPilotEnabled { get; set; }
+    public string PaymentWebhookSecret { get; set; } = "";
 
     public static AppSettings FromConfiguration(Microsoft.Extensions.Configuration.IConfiguration config)
     {
@@ -104,6 +110,11 @@ public sealed class AppSettings
             UploadDir = config["UPLOAD_DIR"] ?? "./uploads",
             MaxUploadBytes = int.TryParse(config["MAX_UPLOAD_BYTES"], out var max) ? max : 5 * 1024 * 1024,
             DvxCompanyRegistrationUrl = config["DVX_COMPANY_REGISTRATION_URL"] ?? "https://www.e-taxes.gov.az/",
+            OmbudsmanEnabled = Flag(config["OMBUDSMAN_ENABLED"], false),
+            DvxSubmitEnabled = Flag(config["DVX_SUBMIT_ENABLED"], false),
+            PaymentsEnabled = Flag(config["PAYMENTS_ENABLED"], false),
+            BankPilotEnabled = Flag(config["BANK_PILOT_ENABLED"], false),
+            PaymentWebhookSecret = config["PAYMENT_WEBHOOK_SECRET"] ?? "",
         };
     }
 }
