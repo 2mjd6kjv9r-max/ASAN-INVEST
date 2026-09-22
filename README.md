@@ -19,3 +19,26 @@ npm run db:verify
 ```
 
 Details: [`server/src/db/README.md`](server/src/db/README.md).
+
+Demo sysadmin (local seed only): `sysadmin@asaninvest.local` / `ChangeMe_Sysadmin_123`. Change this password before any shared deployment.
+
+## API (Phase 1)
+
+REST JSON under `/api/v1` (`server/src`). Session: short-lived access JWT + httpOnly refresh cookie. Internal roles require 2FA (NFR-02). ASAN Login / SİMA is an interface + stub only.
+
+```bash
+cp .env.example .env
+npm install
+npm run db:migrate:deploy
+npm run db:generate
+npm run db:seed
+npm run dev
+```
+
+Health: `GET http://localhost:4000/health`.
+
+Contract: [`docs/api.md`](docs/api.md).
+
+## Out of scope (Phase 1)
+
+PAY, OMB, AFT modules, DVX submit, bank APIs, in-app payments. Company registration returns the existing DVX e-service URL.
