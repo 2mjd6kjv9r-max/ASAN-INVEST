@@ -576,7 +576,9 @@ public sealed class PlatformService
 
     public async Task<object> TransitionCaseAsync(CurrentUser user, Guid id, CaseInternalStatus to, string? reason, CancellationToken ct)
     {
-        var row = await _db.Cases.FirstOrDefaultAsync(c => c.Id == id, ct) ?? throw AppException.NotFound("Case not found");
+        var row = await _db.Cases.Include(c => c.Application).Include(c => c.Tasks).Include(c => c.Evaluations)
+            .FirstOrDefaultAsync(c => c.Id == id, ct) ?? throw AppException.NotFound("Case not found");
+        if (!CanAccessCase(user, row)) throw AppException.Forbidden();
         if (!Workflow.CanTransition(row.InternalStatus, to, user.Roles.ToList()))
             throw AppException.Forbidden("This status change is not allowed for your role");
         row.InternalStatus = to;

@@ -170,8 +170,12 @@ public static class Workflow
 public static class BankPilot
 {
     public const int MaxBanks = 2;
+    public const string CodePrefix = "pilot-bank";
 
     public static bool ExceedsLimit(int uniqueBankCount) => uniqueBankCount > MaxBanks;
+
+    public static bool IsPilotInstitution(string? code) =>
+        !string.IsNullOrWhiteSpace(code) && code.StartsWith(CodePrefix, StringComparison.OrdinalIgnoreCase);
 }
 
 /// PLAN-PHASE2 §4.2.2 — lift WORKFLOW_PHASE2 only for these type codes.
