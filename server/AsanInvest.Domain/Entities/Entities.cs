@@ -25,6 +25,7 @@ public class User
     public Classification? Institution { get; set; }
     public Profile? Profile { get; set; }
     public ICollection<UserRoleAssignment> RoleAssignments { get; set; } = new List<UserRoleAssignment>();
+    public ICollection<PartnerSelection> PartnerSelections { get; set; } = new List<PartnerSelection>();
 }
 
 public class UserRoleAssignment
@@ -52,6 +53,9 @@ public class Profile
     public string? CompanyRegId { get; set; }
     public string? TaxId { get; set; }
     public string? CompanyActivity { get; set; }
+    public string? DvxRegistrationStatus { get; set; }
+    public DateTimeOffset? DvxRegisteredAt { get; set; }
+    public string? CompanyLegalForm { get; set; }
     public string? UboStructure { get; set; }
     public int Version { get; set; } = 1;
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
@@ -109,6 +113,7 @@ public class Project
     public ICollection<Stage> Stages { get; set; } = new List<Stage>();
     public ICollection<Application> Applications { get; set; } = new List<Application>();
     public ICollection<KyaResult> KyaResults { get; set; } = new List<KyaResult>();
+    public ICollection<Payment> Payments { get; set; } = new List<Payment>();
 }
 
 public class Stage
@@ -128,6 +133,7 @@ public class Stage
     public Project Project { get; set; } = null!;
     public Procedure Procedure { get; set; } = null!;
     public Application? Application { get; set; }
+    public ICollection<PartnerSelection> PartnerSelections { get; set; } = new List<PartnerSelection>();
 }
 
 public class KyaResult
@@ -158,13 +164,18 @@ public class Application
     public DateTimeOffset? WithdrawnAt { get; set; }
     public string? WithdrawalReason { get; set; }
     public DateTimeOffset? SubmittedAt { get; set; }
+    public Guid? LinkedCaseId { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
     public ApplicationType Type { get; set; } = null!;
     public Project? Project { get; set; }
     public Profile? Profile { get; set; }
     public Case? Case { get; set; }
+    public Case? LinkedCase { get; set; }
     public ICollection<Message> Messages { get; set; } = new List<Message>();
+    public ICollection<Payment> Payments { get; set; } = new List<Payment>();
+    public ICollection<SystemicProblemApplication> SystemicProblemLinks { get; set; } = new List<SystemicProblemApplication>();
+    public ICollection<PartnerSelection> PartnerSelections { get; set; } = new List<PartnerSelection>();
 }
 
 public class Case
@@ -191,6 +202,7 @@ public class Case
     public User? CaseManager { get; set; }
     public ICollection<TaskItem> Tasks { get; set; } = new List<TaskItem>();
     public ICollection<Evaluation> Evaluations { get; set; } = new List<Evaluation>();
+    public ICollection<Application> OmbudsmanApplications { get; set; } = new List<Application>();
 }
 
 public class TaskItem
@@ -294,7 +306,12 @@ public class Payment
     public PaymentKind Kind { get; set; }
     public decimal Amount { get; set; }
     public Currency Currency { get; set; }
-    public string Status { get; set; } = "external";
+    public PaymentStatus Status { get; set; } = PaymentStatus.EXTERNAL;
+    public string? Provider { get; set; }
+    public string? ProviderRef { get; set; }
+    public string? RawPayload { get; set; }
+    public string? FailureReason { get; set; }
+    public DateTimeOffset? PaidAt { get; set; }
     public Guid? ReceiptDocumentId { get; set; }
     public Guid? ProjectId { get; set; }
     public Guid? ApplicationId { get; set; }
@@ -345,6 +362,7 @@ public class Procedure
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
     public Classification Institution { get; set; } = null!;
     public ICollection<ProcedureDependency> Dependencies { get; set; } = new List<ProcedureDependency>();
+    public ICollection<StateFee> StateFees { get; set; } = new List<StateFee>();
 }
 
 public class ProcedureDependency
@@ -365,6 +383,7 @@ public class ApplicationType
     public bool IsActive { get; set; } = true;
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
+    public ICollection<StateFee> StateFees { get; set; } = new List<StateFee>();
 }
 
 public class WorkflowStatus
@@ -440,4 +459,89 @@ public class GuestSession
     public Guid? ConvertedUserId { get; set; }
     public DateTimeOffset ExpiresAt { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+}
+
+/// TZ §4.3 / FR-OMB-07 — shared by Ombudsman and Aftercare.
+public class SystemicProblem
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string Category { get; set; } = null!;
+    public Guid InstitutionId { get; set; }
+    public string Cause { get; set; } = null!;
+    public ReformStatus ReformStatus { get; set; } = ReformStatus.IDENTIFIED;
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
+    public Classification Institution { get; set; } = null!;
+    public ICollection<SystemicProblemApplication> Applications { get; set; } = new List<SystemicProblemApplication>();
+}
+
+public class SystemicProblemApplication
+{
+    public Guid ProblemId { get; set; }
+    public Guid ApplicationId { get; set; }
+    public SystemicProblem Problem { get; set; } = null!;
+    public Application Application { get; set; } = null!;
+}
+
+/// FR-ADM-10 / FR-PAY-02 — contract is off-platform.
+public class Partner
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string Names { get; set; } = "{}";
+    public string ServiceKind { get; set; } = null!;
+    public decimal PriceAmount { get; set; }
+    public Currency PriceCurrency { get; set; } = Currency.AZN;
+    public string? DurationNote { get; set; }
+    public decimal? Rating { get; set; }
+    public AccreditationStatus AccreditationStatus { get; set; } = AccreditationStatus.PENDING;
+    public bool IsActive { get; set; } = true;
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
+    public ICollection<PartnerSelection> Selections { get; set; } = new List<PartnerSelection>();
+}
+
+/// FR-PAY-03 — one selection per passport stage.
+public class PartnerSelection
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid PartnerId { get; set; }
+    public Guid StageId { get; set; }
+    public Guid UserId { get; set; }
+    public Guid? ApplicationId { get; set; }
+    public DateTimeOffset SelectedAt { get; set; } = DateTimeOffset.UtcNow;
+    public Partner Partner { get; set; } = null!;
+    public Stage Stage { get; set; } = null!;
+    public User User { get; set; } = null!;
+    public Application? Application { get; set; }
+}
+
+/// Opaque DVX/bank adapter log until an integration spec exists. Append-only.
+public class IntegrationMessage
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string Provider { get; set; } = null!;
+    public string Direction { get; set; } = null!;
+    public string ObjectType { get; set; } = null!;
+    public string ObjectId { get; set; } = null!;
+    public string? ProviderRef { get; set; }
+    public string Payload { get; set; } = "{}";
+    public string Status { get; set; } = null!;
+    public DateTimeOffset OccurredAt { get; set; } = DateTimeOffset.UtcNow;
+}
+
+/// FR-ADM-10 dövlət rüsumları. Never mixed with partner prices (TZ §20).
+public class StateFee
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string Code { get; set; } = null!;
+    public string Names { get; set; } = "{}";
+    public decimal Amount { get; set; }
+    public Currency Currency { get; set; } = Currency.AZN;
+    public Guid? ProcedureId { get; set; }
+    public Guid? ApplicationTypeId { get; set; }
+    public bool IsActive { get; set; } = true;
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
+    public Procedure? Procedure { get; set; }
+    public ApplicationType? ApplicationType { get; set; }
 }

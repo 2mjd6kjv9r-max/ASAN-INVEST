@@ -1,6 +1,6 @@
-// ASAN Invest Phase 1 schema — TZ §4.3 / docs/PLAN.md §3.
+// ASAN Invest schema — TZ §4.3 / docs/PLAN.md §3 / docs/PLAN-PHASE2.md §2.
 // Table names are English snake_case; TZ terms stay in comments.
-// Ombudsman / Aftercare extra statuses (TZ §14.2) are not migrated in Phase 1.
+// Phase 2 adds Ombudsman / Aftercare statuses (TZ §14.2), partners, systemic problems, payment provider fields.
 
 generator client {
   provider = "prisma-client-js"
@@ -42,7 +42,7 @@ enum ProjectStatus {
   @@map("project_status")
 }
 
-/// TZ §14.1 Standart workflow — daxili status. Phase 2 extra statuses are not listed.
+/// TZ §14.1 Standart workflow — daxili status. Phase 2 extra statuses (TZ §14.2).
 enum CaseInternalStatus {
   DRAFT
   SUBMITTED
@@ -57,6 +57,14 @@ enum CaseInternalStatus {
   REJECTED
   WITHDRAWN
   ARCHIVED
+  /// TZ §14.2 Ombudsman extras
+  UNDER_INVESTIGATION
+  IN_MEDIATION
+  OPINION_PREPARED
+  OPINION_PENDING_APPROVAL
+  /// TZ §14.2 Aftercare extras
+  NEXT_CONTACT_PLANNED
+  IN_MONITORING
 
   @@map("case_internal_status")
 }
@@ -156,9 +164,11 @@ enum ProjectSizeCategory {
   @@map("project_size_category")
 }
 
-/// TZ §11 / FR-ADM-03. Phase 1 seeds STANDARD only.
+/// TZ §11.1 / §2. Phase 2 adds Ombudsman and Aftercare workflows.
 enum WorkflowKind {
   STANDARD
+  OMBUDSMAN
+  AFTERCARE
 
   @@map("workflow_kind")
 }
@@ -195,12 +205,43 @@ enum CmsStatus {
   @@map("cms_status")
 }
 
-/// TZ §4.3 Ödəniş növü. No in-app acquiring in Phase 1 (TZ §25.1).
+/// TZ §4.3 Ödəniş növü. State fee and partner service never share a receipt (TZ §20).
 enum PaymentKind {
   STATE_FEE
   PARTNER_SERVICE
 
   @@map("payment_kind")
+}
+
+/// FR-PAY-04. EXTERNAL = still paid on an existing e-service (Phase 1 fallback).
+enum PaymentStatus {
+  INITIATED
+  SUCCEEDED
+  FAILED
+  REFUNDED
+  EXTERNAL
+
+  @@map("payment_status")
+}
+
+/// FR-OMB-07
+enum ReformStatus {
+  IDENTIFIED
+  PROPOSED
+  ACCEPTED
+  IMPLEMENTED
+
+  @@map("reform_status")
+}
+
+/// FR-ADM-10 / FR-PAY-02
+enum AccreditationStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  REVOKED
+
+  @@map("accreditation_status")
 }
 
 /// FR-APP-06
@@ -264,6 +305,7 @@ model User {
   auditRecords           AuditRecord[]
   cmsOwned               CmsContent[]
   guestSessionsConverted GuestSession[]
+  partnerSelections      PartnerSelection[]
 
   @@index([institutionId])
   @@index([status])
@@ -300,6 +342,10 @@ model Profile {
   companyRegId    String?  @map("company_reg_id")
   taxId           String?  @map("tax_id")
   companyActivity String?  @map("company_activity")
+  /// FR-REG submit result (VÖEN stays tax_id).
+  dvxRegistrationStatus String?  @map("dvx_registration_status")
+  dvxRegisteredAt       DateTime? @map("dvx_registered_at") @db.Timestamptz(6)
+  companyLegalForm      String?   @map("company_legal_form")
   uboStructure    Json?    @map("ubo_structure")
   version         Int      @default(1)
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -408,6 +454,7 @@ model Stage {
   project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
   procedure   Procedure    @relation(fields: [procedureId], references: [id], onDelete: Restrict)
   application Application? @relation(fields: [applicationId], references: [id], onDelete: SetNull)
+  partnerSelections PartnerSelection[]
 
   @@index([projectId, sortOrder])
   @@map("stages")
@@ -449,20 +496,26 @@ model Application {
   withdrawnAt     DateTime?         @map("withdrawn_at") @db.Timestamptz(6)
   withdrawalReason String?          @map("withdrawal_reason")
   submittedAt     DateTime?         @map("submitted_at") @db.Timestamptz(6)
+  /// FR-OMB-06 / WF-06 — rejected case that opened this Ombudsman application.
+  linkedCaseId    String?           @map("linked_case_id") @db.Uuid
   createdAt       DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  type     ApplicationType @relation(fields: [typeId], references: [id], onDelete: Restrict)
-  project  Project?        @relation(fields: [projectId], references: [id], onDelete: Restrict)
-  profile  Profile?        @relation(fields: [profileId], references: [id], onDelete: Restrict)
-  case     Case?
-  stage    Stage?
-  messages Message[]
-  payments Payment[]
+  type       ApplicationType @relation(fields: [typeId], references: [id], onDelete: Restrict)
+  project    Project?        @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  profile    Profile?        @relation(fields: [profileId], references: [id], onDelete: Restrict)
+  case       Case?
+  linkedCase Case?           @relation("OmbudsmanLinkedCase", fields: [linkedCaseId], references: [id], onDelete: SetNull)
+  stage      Stage?
+  messages   Message[]
+  payments   Payment[]
+  systemicProblemLinks SystemicProblemApplication[]
+  partnerSelections    PartnerSelection[]
 
   @@index([profileId, createdAt])
   @@index([projectId, createdAt])
   @@index([typeId])
+  @@index([linkedCaseId])
   @@map("applications")
 }
 
@@ -495,6 +548,7 @@ model Case {
   institution Classification? @relation("CaseInstitution", fields: [institutionId], references: [id], onDelete: SetNull)
   tasks       Task[]
   evaluations Evaluation[]
+  ombudsmanApplications Application[] @relation("OmbudsmanLinkedCase")
 
   @@index([caseManagerId, internalStatus, slaDueAt])
   @@index([internalStatus, slaDueAt])
@@ -665,17 +719,22 @@ model RuleSet {
   @@map("rule_sets")
 }
 
-/// Ödəniş — TZ §4.3 object. No payment processing in Phase 1 (TZ §25.1).
+/// Ödəniş — TZ §4.3. Phase 2 adds provider fields (FR-PAY-01, 04). STATE_FEE and PARTNER_SERVICE never share a receipt.
 model Payment {
-  id                 String      @id @default(uuid()) @db.Uuid
+  id                 String        @id @default(uuid()) @db.Uuid
   kind               PaymentKind
-  amount             Decimal     @db.Decimal(18, 2)
+  amount             Decimal       @db.Decimal(18, 2)
   currency           Currency
-  status             String      @default("external")
-  receiptDocumentId  String?     @map("receipt_document_id") @db.Uuid
-  projectId          String?     @map("project_id") @db.Uuid
-  applicationId      String?     @map("application_id") @db.Uuid
-  createdAt          DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  status             PaymentStatus @default(EXTERNAL)
+  provider           String?
+  providerRef        String?       @map("provider_ref")
+  rawPayload         Json?         @map("raw_payload")
+  failureReason      String?       @map("failure_reason")
+  paidAt             DateTime?     @map("paid_at") @db.Timestamptz(6)
+  receiptDocumentId  String?       @map("receipt_document_id") @db.Uuid
+  projectId          String?       @map("project_id") @db.Uuid
+  applicationId      String?       @map("application_id") @db.Uuid
+  createdAt          DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
 
   receipt     Document?    @relation(fields: [receiptDocumentId], references: [id], onDelete: SetNull)
   project     Project?     @relation(fields: [projectId], references: [id], onDelete: Restrict)
@@ -683,6 +742,7 @@ model Payment {
 
   @@index([projectId])
   @@index([applicationId])
+  @@index([providerRef])
   @@map("payments")
 }
 
@@ -735,6 +795,7 @@ model Classification {
   procedures               Procedure[]
   procedureDocuments       ProcedureDocument[]
   applicationTypeDocuments ApplicationTypeDocument[]
+  systemicProblems         SystemicProblem[]
 
   @@unique([kind, code])
   @@index([kind, isActive, sortOrder])
@@ -763,6 +824,7 @@ model Procedure {
   applicationType ApplicationType?     @relation(fields: [applicationTypeId], references: [id], onDelete: SetNull)
   stages          Stage[]
   documents       ProcedureDocument[]
+  stateFees       StateFee[]
   dependencies    ProcedureDependency[] @relation("ProcedureDepends")
   dependents      ProcedureDependency[] @relation("ProcedureDependedOn")
 
@@ -809,6 +871,7 @@ model ApplicationType {
   applications Application[]
   procedures   Procedure[]
   documents    ApplicationTypeDocument[]
+  stateFees    StateFee[]
 
   @@map("application_types")
 }
@@ -825,7 +888,7 @@ model ApplicationTypeDocument {
   @@map("application_type_documents")
 }
 
-/// Standart workflow statuses (TZ §14.1). Do not seed TZ §14.2 here.
+/// Standart + Ombudsman/Aftercare statuses (TZ §14.1 and §14.2).
 model WorkflowStatus {
   id                     String                @id @default(uuid()) @db.Uuid
   workflow               WorkflowKind          @default(STANDARD)
@@ -835,7 +898,6 @@ model WorkflowStatus {
   slaWorkingDays         Int?                  @map("sla_working_days")
   pauseSlaOnThisStatus   Boolean               @default(false) @map("pause_sla_on_this_status")
   isTerminal             Boolean               @default(false) @map("is_terminal")
-  /// Phase 2 (TZ §14.2): Ombudsman — UNDER_INVESTIGATION, IN_MEDIATION, OPINION_PREPARED, OPINION_PENDING_APPROVAL; Aftercare — NEXT_CONTACT_PLANNED, IN_MONITORING.
 
   @@unique([workflow, internalStatus])
   @@map("workflow_statuses")
@@ -924,3 +986,108 @@ model GuestSession {
   @@index([expiresAt])
   @@map("guest_sessions")
 }
+
+/// Sistemli problem — TZ §4.3, FR-OMB-07. Shared by Ombudsman and Aftercare.
+model SystemicProblem {
+  id             String       @id @default(uuid()) @db.Uuid
+  category       String
+  institutionId  String       @map("institution_id") @db.Uuid
+  cause          String
+  reformStatus   ReformStatus @map("reform_status")
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  institution  Classification              @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+  applications SystemicProblemApplication[]
+
+  @@index([institutionId, reformStatus])
+  @@map("systemic_problems")
+}
+
+model SystemicProblemApplication {
+  problemId     String @map("problem_id") @db.Uuid
+  applicationId String @map("application_id") @db.Uuid
+
+  problem     SystemicProblem @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  application Application     @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@id([problemId, applicationId])
+  @@map("systemic_problem_applications")
+}
+
+/// Akkreditə olunmuş tərəfdaş — FR-ADM-10, FR-PAY-02. Contract is off-platform.
+model Partner {
+  id                  String               @id @default(uuid()) @db.Uuid
+  names               Json
+  serviceKind         String               @map("service_kind")
+  priceAmount         Decimal              @map("price_amount") @db.Decimal(18, 2)
+  priceCurrency       Currency             @map("price_currency")
+  durationNote        String?              @map("duration_note")
+  rating              Decimal?             @db.Decimal(3, 2)
+  accreditationStatus AccreditationStatus  @default(PENDING) @map("accreditation_status")
+  isActive            Boolean              @default(true) @map("is_active")
+  createdAt           DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  selections PartnerSelection[]
+
+  @@index([accreditationStatus, isActive])
+  @@map("partners")
+}
+
+/// FR-PAY-03 — investor binds a partner to a passport stage.
+model PartnerSelection {
+  id            String   @id @default(uuid()) @db.Uuid
+  partnerId     String   @map("partner_id") @db.Uuid
+  stageId       String   @map("stage_id") @db.Uuid
+  userId        String   @map("user_id") @db.Uuid
+  applicationId String?  @map("application_id") @db.Uuid
+  selectedAt    DateTime @default(now()) @map("selected_at") @db.Timestamptz(6)
+
+  partner     Partner      @relation(fields: [partnerId], references: [id], onDelete: Restrict)
+  stage       Stage        @relation(fields: [stageId], references: [id], onDelete: Cascade)
+  user        User         @relation(fields: [userId], references: [id], onDelete: Restrict)
+  application Application? @relation(fields: [applicationId], references: [id], onDelete: SetNull)
+
+  @@unique([stageId])
+  @@index([partnerId])
+  @@index([userId])
+  @@map("partner_selections")
+}
+
+/// Opaque DVX/bank adapter log until an integration spec exists in-repo. Append-only.
+model IntegrationMessage {
+  id           String   @id @default(uuid()) @db.Uuid
+  provider     String
+  direction    String
+  objectType   String   @map("object_type")
+  objectId     String   @map("object_id")
+  providerRef  String?  @map("provider_ref")
+  payload      Json     @default("{}")
+  status       String
+  occurredAt   DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
+
+  @@index([provider, objectType, objectId])
+  @@index([occurredAt])
+  @@map("integration_messages")
+}
+
+/// FR-ADM-10 dövlət rüsumları cədvəli. Never mixed with partner prices.
+model StateFee {
+  id                String    @id @default(uuid()) @db.Uuid
+  code              String    @unique
+  names             Json
+  amount            Decimal   @db.Decimal(18, 2)
+  currency          Currency  @default(AZN)
+  procedureId       String?   @map("procedure_id") @db.Uuid
+  applicationTypeId String?   @map("application_type_id") @db.Uuid
+  isActive          Boolean   @default(true) @map("is_active")
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  procedure       Procedure?       @relation(fields: [procedureId], references: [id], onDelete: SetNull)
+  applicationType ApplicationType? @relation(fields: [applicationTypeId], references: [id], onDelete: SetNull)
+
+  @@map("state_fees")
+}
+

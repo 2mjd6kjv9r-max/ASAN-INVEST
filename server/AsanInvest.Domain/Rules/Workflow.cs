@@ -18,6 +18,13 @@ public static class StatusMapping
             [CaseInternalStatus.REJECTED] = InvestorVisibleStatus.REJECTED,
             [CaseInternalStatus.WITHDRAWN] = InvestorVisibleStatus.WITHDRAWN,
             [CaseInternalStatus.ARCHIVED] = InvestorVisibleStatus.ARCHIVED,
+            // TZ §14.2 / PLAN-PHASE2 §2.1 — investigation/mediation/opinion → UNDER_CONSIDERATION
+            [CaseInternalStatus.UNDER_INVESTIGATION] = InvestorVisibleStatus.UNDER_CONSIDERATION,
+            [CaseInternalStatus.IN_MEDIATION] = InvestorVisibleStatus.UNDER_CONSIDERATION,
+            [CaseInternalStatus.OPINION_PREPARED] = InvestorVisibleStatus.UNDER_CONSIDERATION,
+            [CaseInternalStatus.OPINION_PENDING_APPROVAL] = InvestorVisibleStatus.RESULT_BEING_PREPARED,
+            [CaseInternalStatus.NEXT_CONTACT_PLANNED] = InvestorVisibleStatus.UNDER_CONSIDERATION,
+            [CaseInternalStatus.IN_MONITORING] = InvestorVisibleStatus.UNDER_CONSIDERATION,
         };
 
     public const string StageLocked = "LOCKED";
@@ -48,7 +55,7 @@ public static class Roles
     public static readonly UserRole[] Internal =
     [
         UserRole.CASE_MANAGER, UserRole.SUPERVISOR, UserRole.INSTITUTION_REP, UserRole.EVALUATOR,
-        UserRole.CONTENT_MANAGER, UserRole.ANALYST, UserRole.SYSADMIN,
+        UserRole.OMBUDSMAN_OFFICER, UserRole.CONTENT_MANAGER, UserRole.ANALYST, UserRole.SYSADMIN,
     ];
 
     public static bool IsInternal(IEnumerable<UserRole> roles) => roles.Any(r => Internal.Contains(r));

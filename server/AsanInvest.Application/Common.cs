@@ -34,6 +34,13 @@ public interface IAppDbContext
     DbSet<CmsContentVersion> CmsContentVersions { get; }
     DbSet<NotificationTemplate> NotificationTemplates { get; }
     DbSet<GuestSession> GuestSessions { get; }
+    DbSet<Payment> Payments { get; }
+    DbSet<SystemicProblem> SystemicProblems { get; }
+    DbSet<SystemicProblemApplication> SystemicProblemApplications { get; }
+    DbSet<Partner> Partners { get; }
+    DbSet<PartnerSelection> PartnerSelections { get; }
+    DbSet<IntegrationMessage> IntegrationMessages { get; }
+    DbSet<StateFee> StateFees { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
     Task<string> NextApplicationPublicNumberAsync(CancellationToken cancellationToken = default);

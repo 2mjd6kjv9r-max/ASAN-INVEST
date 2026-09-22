@@ -124,4 +124,4 @@ CREATE CONSTRAINT TRIGGER applications_case_on_submit
   EXECUTE FUNCTION ensure_case_on_submit();
 
 COMMENT ON TABLE workflow_statuses IS
-  'Standart workflow only (TZ §14.1). Phase 2 TZ §14.2 Ombudsman/Aftercare extra statuses are not stored.';
+  'Standart workflow (TZ §14.1). Phase 2 extra statuses are added in 20260922120000_phase2_ombudsman_aftercare.';
