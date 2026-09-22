@@ -25,6 +25,7 @@
     <ProjectReference Include="..\AsanInvest.Api\AsanInvest.Api.csproj" />
     <ProjectReference Include="..\AsanInvest.Application\AsanInvest.Application.csproj" />
     <ProjectReference Include="..\AsanInvest.Domain\AsanInvest.Domain.csproj" />
+    <ProjectReference Include="..\AsanInvest.Infrastructure\AsanInvest.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>

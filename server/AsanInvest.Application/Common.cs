@@ -89,6 +89,17 @@ public sealed class AppSettings
     public bool PaymentsEnabled { get; set; }
     public bool BankPilotEnabled { get; set; }
     public string PaymentWebhookSecret { get; set; } = "";
+    /// PLAN-PHASE3 §4.2.2 — default off; stubs stay Available=false.
+    public bool AsanLoginEnabled { get; set; }
+    public bool ENonresidentEnabled { get; set; }
+    public bool RemoteBankEnabled { get; set; }
+    public bool EResidencyEnabled { get; set; }
+    public bool ForeignEsignEnabled { get; set; }
+    public bool VisaEnabled { get; set; }
+    public bool CustomsEnabled { get; set; }
+    public bool ElectricityEnabled { get; set; }
+    public bool GasEnabled { get; set; }
+    public bool WaterEnabled { get; set; }
 
     public static AppSettings FromConfiguration(Microsoft.Extensions.Configuration.IConfiguration config)
     {
@@ -116,6 +127,16 @@ public sealed class AppSettings
             PaymentsEnabled = Flag(config["PAYMENTS_ENABLED"], false),
             BankPilotEnabled = Flag(config["BANK_PILOT_ENABLED"], false),
             PaymentWebhookSecret = config["PAYMENT_WEBHOOK_SECRET"] ?? "",
+            AsanLoginEnabled = Flag(config["ASAN_LOGIN_ENABLED"], false),
+            ENonresidentEnabled = Flag(config["E_NONRESIDENT_ENABLED"], false),
+            RemoteBankEnabled = Flag(config["REMOTE_BANK_ENABLED"], false),
+            EResidencyEnabled = Flag(config["E_RESIDENCY_ENABLED"], false),
+            ForeignEsignEnabled = Flag(config["FOREIGN_ESIGN_ENABLED"], false),
+            VisaEnabled = Flag(config["VISA_ENABLED"], false),
+            CustomsEnabled = Flag(config["CUSTOMS_ENABLED"], false),
+            ElectricityEnabled = Flag(config["ELECTRICITY_ENABLED"], false),
+            GasEnabled = Flag(config["GAS_ENABLED"], false),
+            WaterEnabled = Flag(config["WATER_ENABLED"], false),
         };
     }
 }

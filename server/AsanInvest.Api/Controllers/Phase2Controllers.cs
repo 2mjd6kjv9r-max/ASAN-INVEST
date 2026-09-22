@@ -46,7 +46,7 @@ public sealed class Phase2Controller : ApiControllerBase
     [HttpPost("projects/{id:guid}/bank-submissions")]
     [Authorize]
     public async Task<IActionResult> CreateBankSubmissions(Guid id, [FromBody] BankSubmissionsRequest body, CancellationToken ct) =>
-        CreatedData(await _phase2.CreateBankSubmissionsAsync(CurrentUser, id, body.BankInstitutionIds, ct));
+        CreatedData(await _phase2.CreateBankSubmissionsAsync(CurrentUser, id, body.BankInstitutionIds, body.Channel, ct));
 
     [HttpGet("projects/{id:guid}/bank-submissions")]
     [Authorize]

@@ -75,6 +75,58 @@ public sealed class HttpContractTests : IClassFixture<ApiFactory>
         Assert.Equal(JsonValueKind.String, data.GetProperty("message").ValueKind);
         Assert.False(data.GetProperty("electronicSubmitAvailable").GetBoolean());
     }
+
+    [Fact]
+    public async Task Auth_providers_list_email_live_and_plan_shells()
+    {
+        var res = await _client.GetAsync("/api/v1/auth/providers");
+        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+        using var body = JsonDocument.Parse(await res.Content.ReadAsStringAsync());
+        var data = body.RootElement.GetProperty("data");
+        Assert.Equal(JsonValueKind.Array, data.ValueKind);
+        var email = data.EnumerateArray().First(x => x.GetProperty("code").GetString() == "EMAIL");
+        Assert.True(email.GetProperty("available").GetBoolean());
+        var asan = data.EnumerateArray().First(x => x.GetProperty("code").GetString() == "ASAN_LOGIN");
+        Assert.False(asan.GetProperty("available").GetBoolean());
+        Assert.Equal("PLANNED", asan.GetProperty("flag").GetString());
+        var foreign = data.EnumerateArray().First(x => x.GetProperty("code").GetString() == "FOREIGN_ESIGN");
+        Assert.Equal("BASIC", foreign.GetProperty("identificationLevelIfCompleted").GetString());
+        var nonresident = data.EnumerateArray().First(x => x.GetProperty("code").GetString() == "E_NONRESIDENT");
+        Assert.False(nonresident.GetProperty("available").GetBoolean());
+        Assert.Equal("LEGAL", nonresident.GetProperty("identificationLevelIfCompleted").GetString());
+    }
+
+    [Fact]
+    public async Task Asan_login_stub_is_planned_and_does_not_issue_a_session()
+    {
+        var res = await _client.PostAsJsonAsync("/api/v1/auth/asan-login", new { });
+        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+        var text = await res.Content.ReadAsStringAsync();
+        using var body = JsonDocument.Parse(text);
+        var data = body.RootElement.GetProperty("data");
+        Assert.False(data.GetProperty("available").GetBoolean());
+        Assert.Equal("PLANNED", data.GetProperty("flag").GetString());
+        Assert.False(data.TryGetProperty("accessToken", out _));
+        Assert.DoesNotContain("Set-Cookie", res.Headers.ToString(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Integration_status_is_honest_plan()
+    {
+        var res = await _client.GetAsync("/api/v1/integrations/visa/status");
+        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+        using var body = JsonDocument.Parse(await res.Content.ReadAsStringAsync());
+        var data = body.RootElement.GetProperty("data");
+        Assert.Equal("visa", data.GetProperty("code").GetString());
+        Assert.False(data.GetProperty("available").GetBoolean());
+        Assert.Equal("PLANNED", data.GetProperty("flag").GetString());
+        Assert.False(data.GetProperty("enabled").GetBoolean());
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync("/api/v1/integrations/not-a-real-api/status")).StatusCode);
+        var alias = await _client.GetAsync("/api/v1/integrations/customs_incentive/status");
+        Assert.Equal(HttpStatusCode.OK, alias.StatusCode);
+        using var aliasBody = JsonDocument.Parse(await alias.Content.ReadAsStringAsync());
+        Assert.Equal("customs", aliasBody.RootElement.GetProperty("data").GetProperty("code").GetString());
+    }
 }
 
 public sealed class DomainRuleTests
@@ -235,6 +287,80 @@ public sealed class DomainRuleTests
         Assert.False(settings.DvxSubmitEnabled);
         Assert.False(settings.PaymentsEnabled);
         Assert.False(settings.BankPilotEnabled);
+        Assert.False(settings.AsanLoginEnabled);
+        Assert.False(settings.ENonresidentEnabled);
+        Assert.False(settings.RemoteBankEnabled);
+        Assert.False(settings.EResidencyEnabled);
+        Assert.False(settings.ForeignEsignEnabled);
+        Assert.False(settings.VisaEnabled);
+        Assert.False(settings.CustomsEnabled);
+        Assert.False(settings.ElectricityEnabled);
+        Assert.False(settings.GasEnabled);
+        Assert.False(settings.WaterEnabled);
+    }
+
+    [Fact]
+    public void Flag_summary_counts_open_physical_stages_only()
+    {
+        var summary = FlagSummary.FromStages(
+        [
+            (Flag.PHYSICAL, 5, false, false),
+            (Flag.PLANNED, 10, false, false),
+            (Flag.PHYSICAL, 3, true, false),
+            (Flag.ONLINE, 2, false, true),
+        ]);
+        Assert.Equal(15, summary.WorkingDays);
+        Assert.Equal(1, summary.PhysicalContacts);
+        Assert.True(FlagSummary.IsOpenStage(null, false));
+        Assert.False(FlagSummary.IsOpenStage(DateTimeOffset.UtcNow, false));
+    }
+
+    [Fact]
+    public void Fin_mask_does_not_echo_the_full_value()
+    {
+        Assert.Null(FinMask.Mask(null));
+        var masked = FinMask.Mask("ABCD1234");
+        Assert.NotEqual("ABCD1234", masked);
+        Assert.StartsWith("AB", masked);
+        Assert.EndsWith("34", masked);
+        Assert.DoesNotContain("CD12", masked);
+    }
+
+    [Fact]
+    public async Task Phase3_stubs_never_report_available()
+    {
+        var settings = new AppSettings { AsanLoginEnabled = true, ENonresidentEnabled = true, EResidencyEnabled = false };
+        Assert.True(settings.AsanLoginEnabled);
+        Assert.False(settings.EResidencyEnabled);
+        Assert.Equal(EResidencyStatus.NONE, default(EResidencyStatus) == 0 ? EResidencyStatus.NONE : EResidencyStatus.GRANTED);
+        Assert.NotEqual(EResidencyStatus.GRANTED, EResidencyStatus.NONE);
+        Assert.NotEqual(EResidencyStatus.GRANTED, EResidencyStatus.PLAN_PENDING);
+        Assert.NotEqual(EResidencyStatus.GRANTED, EResidencyStatus.APPLIED);
+
+        var eNonresident = new AsanInvest.Infrastructure.Integrations.ENonresidentClientStub(Microsoft.Extensions.Logging.Abstractions.NullLogger<AsanInvest.Infrastructure.Integrations.ENonresidentClientStub>.Instance);
+        var visa = new AsanInvest.Infrastructure.Integrations.VisaClientStub(Microsoft.Extensions.Logging.Abstractions.NullLogger<AsanInvest.Infrastructure.Integrations.VisaClientStub>.Instance);
+        var customs = new AsanInvest.Infrastructure.Integrations.CustomsClientStub(Microsoft.Extensions.Logging.Abstractions.NullLogger<AsanInvest.Infrastructure.Integrations.CustomsClientStub>.Instance);
+        var utilities = new AsanInvest.Infrastructure.Integrations.UtilityClientStub(Microsoft.Extensions.Logging.Abstractions.NullLogger<AsanInvest.Infrastructure.Integrations.UtilityClientStub>.Instance);
+        var foreign = new AsanInvest.Infrastructure.Integrations.ForeignEsignClientStub(Microsoft.Extensions.Logging.Abstractions.NullLogger<AsanInvest.Infrastructure.Integrations.ForeignEsignClientStub>.Instance);
+
+        var start = await eNonresident.StartAsync(Guid.NewGuid(), CancellationToken.None);
+        var complete = await eNonresident.CompleteAsync(Guid.NewGuid(), "opaque-assertion", CancellationToken.None);
+        var visaOut = await visa.SubmitAsync(Guid.NewGuid(), CancellationToken.None);
+        var customsOut = await customs.SubmitAsync(Guid.NewGuid(), CancellationToken.None);
+        var utilOut = await utilities.SubmitAsync("electricity", Guid.NewGuid(), CancellationToken.None);
+        var foreignOut = await foreign.StartAsync("unlisted-issuer", CancellationToken.None);
+
+        Assert.False(start.Available);
+        Assert.False(complete.Available);
+        Assert.False(visaOut.Available);
+        Assert.False(customsOut.Available);
+        Assert.False(utilOut.Available);
+        Assert.False(foreignOut.Available);
+        Assert.Equal("PLANNED", start.Flag);
+        Assert.Null(complete.ProviderRef);
+        Assert.Null(visaOut.ProviderRef);
+        Assert.Equal("visa", Phase3Service.NormalizeCode("asan_viza"));
+        Assert.Equal("migration", Phase3Service.NormalizeCode("work_permit"));
     }
 
     [Fact]

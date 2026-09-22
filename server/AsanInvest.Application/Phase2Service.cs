@@ -278,7 +278,7 @@ public sealed class Phase2Service
         return new { packet = Json(profile.UboStructure) };
     }
 
-    public async Task<object> CreateBankSubmissionsAsync(CurrentUser user, Guid projectId, List<Guid> bankInstitutionIds, CancellationToken ct)
+    public async Task<object> CreateBankSubmissionsAsync(CurrentUser user, Guid projectId, List<Guid> bankInstitutionIds, BankChannel? channel, CancellationToken ct)
     {
         var profile = await ProfileOf(user.Id, ct);
         var project = await _db.Projects.Include(p => p.Stages).ThenInclude(s => s.Procedure)
@@ -321,6 +321,7 @@ public sealed class Phase2Service
                 Workflow = WorkflowKind.STANDARD,
                 ProjectId = project.Id,
                 Source = ApplicationSource.PASSPORT_STAGE,
+                BankChannel = channel ?? BankChannel.PHYSICAL_SIGNATURE,
             };
             try { Workflow.AssertLinked(app.ProjectId, app.ProfileId); }
             catch (InvalidOperationException ex) { throw AppException.BadRequest("UNLINKED_APPLICATION", ex.Message); }
@@ -341,7 +342,10 @@ public sealed class Phase2Service
             await _db.SaveChangesAsync(ct);
 
             IntegrationOutcome outcome;
-            if (_settings.BankPilotEnabled)
+            var remoteChannel = app.BankChannel == BankChannel.REMOTE_ESIGN;
+            if (remoteChannel && !_settings.RemoteBankEnabled)
+                outcome = new IntegrationOutcome(false, Flag.PLANNED.ToString(), null, "{}", "Remote e-sign account opening is PLAN until Mərkəzi Bank. KYC still proceeds; the platform does not open the account.");
+            else if (_settings.BankPilotEnabled)
                 outcome = await _banks.SubmitAsync(bank.Id, packet, ct);
             else
                 outcome = new IntegrationOutcome(false, Flag.PLANNED.ToString(), null, "{}", "Bank pilot adapter is disabled. The case stays with a PLAN / PHYSICAL honesty flag.");
@@ -365,6 +369,7 @@ public sealed class Phase2Service
                 caseId = cse.Id,
                 bankInstitutionId = bank.Id,
                 bankCode = bank.Code,
+                channel = app.BankChannel,
                 flag = outcome.Flag,
                 code = outcome.Available ? (string?)null : "INTEGRATION_UNAVAILABLE",
             });
@@ -372,7 +377,13 @@ public sealed class Phase2Service
 
         Notify(user.Id, "BANK_KYC_SENT", "Bank KYC submissions were recorded. Open the passport Bank hesabı stage for per-bank status.", new { projectId });
         await _db.SaveChangesAsync(ct);
-        return new { submissions = created, flag = _settings.BankPilotEnabled ? Flag.ONLINE : Flag.PLANNED };
+        var remote = (channel ?? BankChannel.PHYSICAL_SIGNATURE) == BankChannel.REMOTE_ESIGN;
+        return new
+        {
+            submissions = created,
+            channel = channel ?? BankChannel.PHYSICAL_SIGNATURE,
+            flag = remote || !_settings.BankPilotEnabled ? Flag.PLANNED : Flag.ONLINE,
+        };
     }
 
     public async Task<object> ListBankSubmissionsAsync(CurrentUser user, Guid projectId, CancellationToken ct)
@@ -398,6 +409,7 @@ public sealed class Phase2Service
             bankInstitutionId = a.Case?.InstitutionId,
             internalStatus = a.Case?.InternalStatus,
             investorStatus = a.Case is null ? InvestorVisibleStatus.DRAFT : StatusMapping.ToInvestorStatus(a.Case.InternalStatus),
+            channel = a.BankChannel,
         });
     }
 
