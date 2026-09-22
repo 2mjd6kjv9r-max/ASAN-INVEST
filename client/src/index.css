@@ -1,0 +1,13 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  @apply bg-sand-50 text-ink font-sans antialiased;
+}
+
+.buta-bg {
+  background-image:
+    radial-gradient(circle at 12% 18%, rgba(196, 160, 70, 0.16), transparent 28%),
+    radial-gradient(circle at 88% 0%, rgba(19, 42, 70, 0.12), transparent 32%);
+}

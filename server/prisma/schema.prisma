@@ -1,0 +1,303 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  investor
+  operator
+  admin
+}
+
+enum UserStatus {
+  pending_verification
+  active
+  suspended
+}
+
+enum NationalityType {
+  azerbaijani_citizen
+  foreign_citizen
+}
+
+enum KycStatus {
+  unsubmitted
+  pending
+  approved
+  rejected
+}
+
+enum KycDocumentType {
+  id_card
+  passport
+  residence_permit
+  other
+}
+
+enum DocumentStatus {
+  uploaded
+  approved
+  rejected
+}
+
+enum ProjectStatus {
+  draft
+  published
+  funding
+  funded
+  closed
+  cancelled
+}
+
+enum InvestmentStatus {
+  pending_kyc
+  pending_payment
+  pending_review
+  confirmed
+  rejected
+  cancelled
+  refunded
+}
+
+enum PaymentStatus {
+  initiated
+  succeeded
+  failed
+  refunded
+}
+
+model User {
+  id              String          @id @default(uuid()) @db.Uuid
+  email           String          @unique
+  passwordHash    String?         @map("password_hash")
+  role            UserRole        @default(investor)
+  status          UserStatus      @default(pending_verification)
+  nationalityType NationalityType @map("nationality_type")
+  preferredLocale String          @default("az") @map("preferred_locale")
+  emailVerifiedAt DateTime?       @map("email_verified_at")
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+
+  profile          InvestorProfile?
+  kycDocuments     KycDocument[]
+  refreshTokens    RefreshToken[]
+  auditLogs        AuditLog[]        @relation("AuditActor")
+  investments      Investment[]
+  createdProjects  Project[]         @relation("ProjectCreator")
+  reviewedProfiles InvestorProfile[] @relation("KycReviewer")
+
+  @@map("users")
+}
+
+model InvestorProfile {
+  userId               String    @id @map("user_id") @db.Uuid
+  firstName            String    @map("first_name")
+  lastName             String    @map("last_name")
+  patronymic           String?
+  dateOfBirth          DateTime? @map("date_of_birth") @db.Date
+  countryOfCitizenship String?   @map("country_of_citizenship") @db.Char(2)
+  fin                  String?
+  passportNumber       String?   @map("passport_number")
+  phone                String?
+  addressLine          String?   @map("address_line")
+  city                 String?
+  country              String?
+  kycStatus            KycStatus @default(unsubmitted) @map("kyc_status")
+  kycReviewedById      String?   @map("kyc_reviewed_by") @db.Uuid
+  kycReviewedAt        DateTime? @map("kyc_reviewed_at")
+  kycRejectReason      String?   @map("kyc_reject_reason")
+
+  user          User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kycReviewedBy User? @relation("KycReviewer", fields: [kycReviewedById], references: [id])
+
+  @@map("investor_profiles")
+}
+
+model KycDocument {
+  id          String           @id @default(uuid()) @db.Uuid
+  userId      String           @map("user_id") @db.Uuid
+  type        KycDocumentType
+  originalName String          @map("original_name")
+  storageKey  String           @map("storage_key")
+  mimeType    String           @map("mime_type")
+  status      DocumentStatus   @default(uploaded)
+  createdAt   DateTime         @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("kyc_documents")
+}
+
+model Agency {
+  id     String @id @default(uuid()) @db.Uuid
+  nameAz String @map("name_az")
+  nameEn String @map("name_en")
+  slug   String @unique
+
+  projects Project[]
+
+  @@map("agencies")
+}
+
+model Sector {
+  id     String @id @default(uuid()) @db.Uuid
+  nameAz String @map("name_az")
+  nameEn String @map("name_en")
+  slug   String @unique
+
+  projects Project[]
+
+  @@map("sectors")
+}
+
+model Project {
+  id                  String        @id @default(uuid()) @db.Uuid
+  slug                String        @unique
+  titleAz             String        @map("title_az")
+  titleEn             String        @map("title_en")
+  summaryAz           String        @map("summary_az")
+  summaryEn           String        @map("summary_en")
+  descriptionAz       String        @map("description_az")
+  descriptionEn       String        @map("description_en")
+  agencyId            String        @map("agency_id") @db.Uuid
+  sectorId            String        @map("sector_id") @db.Uuid
+  region              String
+  currency            String        @default("AZN") @db.Char(3)
+  targetAmount        Decimal       @map("target_amount") @db.Decimal(18, 2)
+  minInvestment       Decimal       @map("min_investment") @db.Decimal(18, 2)
+  maxInvestment       Decimal?      @map("max_investment") @db.Decimal(18, 2)
+  fundedAmount        Decimal       @default(0) @map("funded_amount") @db.Decimal(18, 2)
+  status              ProjectStatus @default(draft)
+  fundingStartsAt     DateTime      @map("funding_starts_at")
+  fundingEndsAt       DateTime      @map("funding_ends_at")
+  expectedReturnNote  String?       @map("expected_return_note")
+  createdById         String        @map("created_by") @db.Uuid
+  publishedAt         DateTime?     @map("published_at")
+  createdAt           DateTime      @default(now()) @map("created_at")
+  updatedAt           DateTime      @updatedAt @map("updated_at")
+
+  agency       Agency          @relation(fields: [agencyId], references: [id])
+  sector       Sector          @relation(fields: [sectorId], references: [id])
+  createdBy    User            @relation("ProjectCreator", fields: [createdById], references: [id])
+  updates      ProjectUpdate[]
+  investments  Investment[]
+
+  @@index([status])
+  @@index([sectorId])
+  @@map("projects")
+}
+
+model ProjectUpdate {
+  id        String   @id @default(uuid()) @db.Uuid
+  projectId String   @map("project_id") @db.Uuid
+  titleAz   String   @map("title_az")
+  titleEn   String   @map("title_en")
+  bodyAz    String   @map("body_az")
+  bodyEn    String   @map("body_en")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@map("project_updates")
+}
+
+model Investment {
+  id             String            @id @default(uuid()) @db.Uuid
+  publicRef      String            @unique @map("public_ref")
+  userId         String            @map("user_id") @db.Uuid
+  projectId      String            @map("project_id") @db.Uuid
+  amount         Decimal           @db.Decimal(18, 2)
+  currency       String            @db.Char(3)
+  status         InvestmentStatus  @default(pending_payment)
+  idempotencyKey String            @unique @map("idempotency_key")
+  rejectReason   String?           @map("reject_reason")
+  createdAt      DateTime          @default(now()) @map("created_at")
+  updatedAt      DateTime          @updatedAt @map("updated_at")
+
+  user     User      @relation(fields: [userId], references: [id])
+  project  Project   @relation(fields: [projectId], references: [id])
+  payments Payment[]
+
+  @@index([userId])
+  @@index([projectId])
+  @@index([status])
+  @@map("investments")
+}
+
+model Payment {
+  id           String        @id @default(uuid()) @db.Uuid
+  investmentId String        @map("investment_id") @db.Uuid
+  provider     String        @default("stub")
+  providerRef  String        @unique @map("provider_ref")
+  amount       Decimal       @db.Decimal(18, 2)
+  currency     String        @db.Char(3)
+  status       PaymentStatus @default(initiated)
+  rawPayload   Json?         @map("raw_payload")
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+
+  investment Investment @relation(fields: [investmentId], references: [id], onDelete: Cascade)
+
+  @@index([investmentId])
+  @@map("payments")
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([tokenHash])
+  @@map("refresh_tokens")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  actorId    String?  @map("actor_id") @db.Uuid
+  action     String
+  entityType String   @map("entity_type")
+  entityId   String   @map("entity_id")
+  metadata   Json?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  actor User? @relation("AuditActor", fields: [actorId], references: [id])
+
+  @@index([entityType, entityId])
+  @@map("audit_logs")
+}
+
+model EmailVerificationToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  @@index([tokenHash])
+  @@map("email_verification_tokens")
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  @@index([tokenHash])
+  @@map("password_reset_tokens")
+}
