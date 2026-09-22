@@ -223,6 +223,27 @@ public static class Phase3Integrity
     public static bool MayGrantEResidency(bool legislationEnabled, EResidencyStatus current) =>
         legislationEnabled && current is EResidencyStatus.APPLIED or EResidencyStatus.PLAN_PENDING;
 
+    public const string PlanExternalSubmitOpinion =
+        "Complete this PLAN integration in back-office. The adapter is not available.";
+
+    public static bool IsPlanExternalSubmitTask(string? opinion) =>
+        !string.IsNullOrWhiteSpace(opinion)
+        && opinion.Contains("PLAN integration", StringComparison.Ordinal);
+
+    /// A prior PLAN external-submit is recorded if that task exists, open or closed.
+    public static bool HasRecordedPlanExternalSubmit(IEnumerable<string?> taskOpinions) =>
+        taskOpinions.Any(IsPlanExternalSubmitTask);
+
+    /// Only statuses that have not moved past institution coordination may be set to it.
+    public static bool CanAssignPlanCoordination(CaseInternalStatus status) =>
+        status is CaseInternalStatus.DRAFT
+            or CaseInternalStatus.SUBMITTED
+            or CaseInternalStatus.REGISTERED
+            or CaseInternalStatus.IN_EVALUATION
+            or CaseInternalStatus.ASSIGNED_FOR_EXECUTION
+            or CaseInternalStatus.UNDER_REVIEW
+            or CaseInternalStatus.INTER_AGENCY_COORDINATION;
+
     /// Postgres CHECK requires OUTBOUND/INBOUND. Lowercase values become 409 via DbUpdateException.
     public static string IntegrationDirection(string? value) =>
         string.Equals(value, "inbound", StringComparison.OrdinalIgnoreCase) ? "INBOUND" : "OUTBOUND";

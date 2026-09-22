@@ -269,7 +269,8 @@ public sealed class Phase3Service
         if (stage.ApplicationId is Guid appId)
             cse = await _db.Cases.Include(c => c.Tasks).FirstOrDefaultAsync(c => c.ApplicationId == appId, ct);
 
-        var alreadyRecorded = cse is not null && cse.Tasks.Any(t => t.Status == "open");
+        var alreadyRecorded = cse is not null
+            && Phase3Integrity.HasRecordedPlanExternalSubmit(cse.Tasks.Select(t => t.Opinion));
         if (!alreadyRecorded)
             LogIntegration(code, "outbound", "stage", stage.Id.ToString(), outcome);
 
@@ -298,10 +299,11 @@ public sealed class Phase3Service
                         InstitutionId = stage.Procedure.InstitutionId,
                         DueAt = cse.SlaDueAt ?? DateTimeOffset.UtcNow.AddDays(10),
                         Status = "open",
-                        Opinion = "Complete this PLAN integration in back-office. The adapter is not available.",
+                        Opinion = Phase3Integrity.PlanExternalSubmitOpinion,
                     });
+                    if (Phase3Integrity.CanAssignPlanCoordination(cse.InternalStatus))
+                        cse.InternalStatus = CaseInternalStatus.INTER_AGENCY_COORDINATION;
                 }
-                cse.InternalStatus = CaseInternalStatus.INTER_AGENCY_COORDINATION;
                 caseId = cse.Id;
             }
         }

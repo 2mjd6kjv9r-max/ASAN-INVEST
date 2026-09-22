@@ -393,6 +393,16 @@ public sealed class DomainRuleTests
         Assert.Equal(
             Phase3Integrity.MissingRequiredFields(customsSchema, blank.RootElement).Select(m => m.Path),
             Phase3Integrity.MissingRequiredFields(customsSchema, blank.RootElement).Select(m => m.Path));
+
+        Assert.True(Phase3Integrity.IsPlanExternalSubmitTask(Phase3Integrity.PlanExternalSubmitOpinion));
+        Assert.True(Phase3Integrity.HasRecordedPlanExternalSubmit(["other", Phase3Integrity.PlanExternalSubmitOpinion]));
+        Assert.False(Phase3Integrity.HasRecordedPlanExternalSubmit(["Complete bank KYC in back-office"]));
+        Assert.True(Phase3Integrity.CanAssignPlanCoordination(CaseInternalStatus.REGISTERED));
+        Assert.True(Phase3Integrity.CanAssignPlanCoordination(CaseInternalStatus.INTER_AGENCY_COORDINATION));
+        Assert.False(Phase3Integrity.CanAssignPlanCoordination(CaseInternalStatus.WAITING_ADDITIONAL_INFO));
+        Assert.False(Phase3Integrity.CanAssignPlanCoordination(CaseInternalStatus.RESULT_BEING_PREPARED));
+        Assert.False(Phase3Integrity.CanAssignPlanCoordination(CaseInternalStatus.COMPLETED));
+        Assert.False(Phase3Integrity.CanAssignPlanCoordination(CaseInternalStatus.REJECTED));
     }
 
     [Fact]
