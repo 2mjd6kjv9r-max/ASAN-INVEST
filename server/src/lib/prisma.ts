@@ -1,10 +1,7 @@
-import { PrismaClient } from "@prisma/client";
-import { env } from "../config/env";
+import { prisma } from "../db/prisma";
 import { logger } from "./logger";
 
-export const prisma = new PrismaClient({
-  log: env.NODE_ENV === "development" ? ["warn", "error"] : ["error"],
-});
+export { prisma };
 
 export async function connectDatabase(): Promise<void> {
   await prisma.$connect();

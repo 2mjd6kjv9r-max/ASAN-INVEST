@@ -30,8 +30,6 @@ const envSchema = z.object({
   UPLOAD_DIR: z.string().default("./uploads"),
   MAX_UPLOAD_BYTES: z.coerce.number().int().positive().default(5 * 1024 * 1024),
   DVX_COMPANY_REGISTRATION_URL: z.string().url().default("https://www.e-taxes.gov.az/"),
-  SEED_SYSADMIN_EMAIL: z.string().email().default("sysadmin@asan-invest.local"),
-  SEED_SYSADMIN_PASSWORD: z.string().min(10).default("ChangeMeSysadmin!23"),
 });
 
 export type Env = z.infer<typeof envSchema>;

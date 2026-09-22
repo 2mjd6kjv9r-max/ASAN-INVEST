@@ -1,22 +1,36 @@
 import { Router } from "express";
 import { z } from "zod";
+import { CaseInternalStatus, UserRole } from "@prisma/client";
 import { prisma } from "../../lib/prisma";
 import { asyncHandler } from "../../lib/async-handler";
 import { authenticate } from "../../middleware/authenticate";
 import { authorize } from "../../middleware/authorize";
 import { validate } from "../../middleware/validate";
 import { AppError } from "../../lib/errors";
+import { hasRole } from "../../lib/roles";
 
 export const evaluationsRouter = Router();
 
 evaluationsRouter.get(
   "/evaluations",
   authenticate,
-  authorize("evaluator", "supervisor", "sysadmin"),
+  authorize(UserRole.EVALUATOR, UserRole.SUPERVISOR, UserRole.SYSADMIN),
   asyncHandler(async (req, res) => {
     const rows = await prisma.evaluation.findMany({
-      where: req.user!.roles.includes("evaluator") ? { OR: [{ evaluatorId: req.user!.id }, { evaluatorId: null }] } : undefined,
-      include: { case: { include: { application: true } }, subject: { select: { id: true, email: true, screeningOutcome: true } } },
+      where: hasRole(req.user!.roles, UserRole.EVALUATOR)
+        ? { OR: [{ evaluatorId: req.user!.id }, { evaluatorId: null }] }
+        : undefined,
+      include: {
+        case: { include: { application: true } },
+        subject: {
+          select: {
+            id: true,
+            email: true,
+            pepSanctionsStatus: true,
+            pepSanctionsCheckedAt: true,
+          },
+        },
+      },
       orderBy: { createdAt: "asc" },
     });
     res.json({ data: rows });
@@ -26,7 +40,7 @@ evaluationsRouter.get(
 evaluationsRouter.post(
   "/evaluations/:id/opinion",
   authenticate,
-  authorize("evaluator", "supervisor"),
+  authorize(UserRole.EVALUATOR, UserRole.SUPERVISOR),
   validate(z.object({ opinion: z.string().min(3), continueCase: z.boolean().default(true) })),
   asyncHandler(async (req, res) => {
     const row = await prisma.evaluation.findUnique({ where: { id: req.params.id } });
@@ -43,7 +57,11 @@ evaluationsRouter.post(
       });
       await tx.case.update({
         where: { id: row.caseId },
-        data: { internalStatus: req.body.continueCase ? "assigned" : "awaiting_info" },
+        data: {
+          internalStatus: req.body.continueCase
+            ? CaseInternalStatus.ASSIGNED_FOR_EXECUTION
+            : CaseInternalStatus.WAITING_ADDITIONAL_INFO,
+        },
       });
       return evaluation;
     });
@@ -54,11 +72,10 @@ evaluationsRouter.post(
 evaluationsRouter.post(
   "/compliance/screen/:userId",
   authenticate,
-  authorize("evaluator", "supervisor", "sysadmin"),
+  authorize(UserRole.EVALUATOR, UserRole.SUPERVISOR, UserRole.SYSADMIN),
   asyncHandler(async (req, res) => {
     const { complianceService } = await import("../../services/compliance/screening");
     const result = await complianceService.screenUser(req.params.userId, req.user!.id);
     res.json({ data: result });
   }),
 );
-

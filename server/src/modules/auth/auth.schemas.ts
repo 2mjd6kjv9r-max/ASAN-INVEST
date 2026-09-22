@@ -9,7 +9,7 @@ export const registerSchema = z.object({
     .regex(/[A-Za-z]/, "Password must include a letter")
     .regex(/\d/, "Password must include a number"),
   locale: z.enum(["az", "en", "ru", "tr", "ar"]).optional(),
-  guestSessionToken: z.string().min(8).optional(),
+  guestSessionToken: z.string().uuid().optional(),
   consents: z
     .object({
       version: z.string().min(1),
@@ -37,6 +37,6 @@ export const verifyEmailSchema = z.object({
 });
 
 export const twoFactorSchema = z.object({
-  challengeId: z.string().uuid(),
+  challengeId: z.string().min(20),
   code: z.string().length(6),
 });

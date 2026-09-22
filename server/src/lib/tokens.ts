@@ -11,6 +11,17 @@ export type AccessTokenPayload = {
   typ: "access";
 };
 
+export type RefreshTokenPayload = {
+  sub: string;
+  typ: "refresh";
+};
+
+export type PurposeTokenPayload = {
+  sub: string;
+  typ: "email_verify" | "password_reset" | "two_factor";
+  codeHash?: string;
+};
+
 export function hashToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }
@@ -35,12 +46,42 @@ export function signAccessToken(payload: Omit<AccessTokenPayload, "typ">): strin
   });
 }
 
+export function signRefreshToken(userId: string): { token: string; expiresAt: Date } {
+  const token = jwt.sign({ sub: userId, typ: "refresh" }, env.JWT_REFRESH_SECRET, {
+    expiresIn: env.JWT_REFRESH_EXPIRES_IN as SignOptions["expiresIn"],
+  });
+  return { token, expiresAt: new Date(Date.now() + parseDurationToMs(env.JWT_REFRESH_EXPIRES_IN)) };
+}
+
+export function signPurposeToken(
+  payload: PurposeTokenPayload,
+  expiresIn: SignOptions["expiresIn"],
+): string {
+  return jwt.sign(payload, env.JWT_ACCESS_SECRET, { expiresIn });
+}
+
 export function verifyAccessToken(token: string): AccessTokenPayload {
   const decoded = jwt.verify(token, env.JWT_ACCESS_SECRET);
   if (typeof decoded !== "object" || decoded === null || decoded.typ !== "access" || !decoded.sub) {
     throw new Error("Invalid access token");
   }
   return decoded as AccessTokenPayload;
+}
+
+export function verifyRefreshToken(token: string): RefreshTokenPayload {
+  const decoded = jwt.verify(token, env.JWT_REFRESH_SECRET);
+  if (typeof decoded !== "object" || decoded === null || decoded.typ !== "refresh" || !decoded.sub) {
+    throw new Error("Invalid refresh token");
+  }
+  return decoded as RefreshTokenPayload;
+}
+
+export function verifyPurposeToken(token: string, typ: PurposeTokenPayload["typ"]): PurposeTokenPayload {
+  const decoded = jwt.verify(token, env.JWT_ACCESS_SECRET);
+  if (typeof decoded !== "object" || decoded === null || decoded.typ !== typ || !decoded.sub) {
+    throw new Error("Invalid token");
+  }
+  return decoded as PurposeTokenPayload;
 }
 
 export function parseDurationToMs(duration: string): number {

@@ -1,13 +1,20 @@
 import { Router } from "express";
 import { z } from "zod";
+import {
+  ClassificationKind,
+  ProjectStatus,
+  UserRole,
+} from "@prisma/client";
 import { prisma } from "../../lib/prisma";
 import { asyncHandler } from "../../lib/async-handler";
 import { authenticate } from "../../middleware/authenticate";
 import { validate } from "../../middleware/validate";
 import { AppError } from "../../lib/errors";
+import { resolveClassificationId } from "../../lib/classifications";
 import { ruleEngine } from "../../services/rules/engine";
 import { writeAudit } from "../../lib/audit";
 import { toStageStatus } from "../../domain/status";
+import { hasRole } from "../../lib/roles";
 
 export const projectsRouter = Router();
 
@@ -27,31 +34,61 @@ async function investorProfile(userId: string) {
   return profile;
 }
 
+function serializeProjectStages(
+  stages: Array<{
+    id: string;
+    flag: string;
+    sortOrder: number;
+    expectedDurationDays: number | null;
+    isNotApplicable: boolean;
+    applicationId: string | null;
+    procedure: { names: unknown; code: string; flag: string };
+    application?: { case: { internalStatus: import("@prisma/client").CaseInternalStatus } | null } | null;
+  }>,
+  lockedCodes: Set<string>,
+) {
+  return stages.map((stage) => ({
+    id: stage.id,
+    flag: stage.flag,
+    sortOrder: stage.sortOrder,
+    expectedDurationDays: stage.expectedDurationDays,
+    procedure: stage.procedure,
+    displayStatus: toStageStatus({
+      notApplicable: stage.isNotApplicable,
+      locked: lockedCodes.has(stage.procedure.code),
+      hasApplication: Boolean(stage.applicationId),
+      caseStatus: stage.application?.case?.internalStatus,
+    }),
+  }));
+}
+
 projectsRouter.get(
   "/projects",
   authenticate,
   asyncHandler(async (req, res) => {
     const profile = await investorProfile(req.user!.id);
-    const isStaff = req.user!.roles.some((role) =>
-      ["case_manager", "supervisor", "sysadmin", "analyst"].includes(role),
+    const isStaff = hasRole(
+      req.user!.roles,
+      UserRole.CASE_MANAGER,
+      UserRole.SUPERVISOR,
+      UserRole.SYSADMIN,
+      UserRole.ANALYST,
     );
     const rows = await prisma.project.findMany({
-      where: isStaff ? undefined : { ownerProfileId: profile.id },
-      include: { stages: { include: { procedure: true, application: { include: { case: true } } } } },
+      where: isStaff ? undefined : { profileId: profile.id },
+      include: {
+        stages: {
+          include: { procedure: true, application: { include: { case: true } } },
+          orderBy: { sortOrder: "asc" },
+        },
+      },
       orderBy: { createdAt: "desc" },
     });
     res.json({
       data: rows.map((project) => ({
         ...project,
         volumeAmount: project.volumeAmount.toFixed(2),
-        stages: project.stages.map((stage) => ({
-          ...stage,
-          displayStatus: toStageStatus({
-            notApplicable: stage.notApplicable,
-            hasApplication: Boolean(stage.applicationId),
-            caseStatus: stage.application?.case?.internalStatus,
-          }),
-        })),
+        stages: serializeProjectStages(project.stages, new Set()),
       })),
     });
   }),
@@ -69,31 +106,30 @@ projectsRouter.post(
     const kya = await prisma.kyaResult.findUnique({ where: { id: req.body.kyaResultId } });
     if (!kya || kya.profileId !== profile.id) throw AppError.notFound("KYA result not found");
     const sizeCategory = await ruleEngine.sizeCategory(req.body.volumeAmount, req.body.volumeCurrency);
-    const assignmentRule = await prisma.ruleSet.findFirst({
-      where: { kind: "case_assignment" },
-      orderBy: { version: "desc" },
-    });
-    const managerEmail = (assignmentRule?.body as { permanentManagerEmail?: string } | undefined)?.permanentManagerEmail;
-    const manager = sizeCategory === "large" && managerEmail
-      ? await prisma.user.findUnique({ where: { email: managerEmail } })
-      : null;
+    const sectorId = await resolveClassificationId(ClassificationKind.SECTOR, req.body.sector);
+    const territoryId = await resolveClassificationId(ClassificationKind.REGION, req.body.territory);
 
-    const procedures = (kya.procedures as Array<{ code: string }>).map((row) => row.code);
-    const catalog = await prisma.procedure.findMany({ where: { code: { in: procedures } } });
+    const procedurePayload = Array.isArray(kya.procedures)
+      ? (kya.procedures as Array<{ code?: string }>)
+      : [];
+    const codes = procedurePayload.map((row) => row.code).filter((code): code is string => Boolean(code));
+    const catalog = await prisma.procedure.findMany({
+      where: { code: { in: codes } },
+      include: { dependencies: true },
+    });
 
     const project = await prisma.$transaction(async (tx) => {
       const created = await tx.project.create({
         data: {
-          ownerProfileId: profile.id,
+          profileId: profile.id,
           name: req.body.name,
-          sector: req.body.sector,
-          territory: req.body.territory,
+          sectorId,
+          territoryId,
           volumeAmount: req.body.volumeAmount,
           volumeCurrency: req.body.volumeCurrency,
           sizeCategory,
           companyRef: req.body.companyRef,
-          permanentCaseManagerId: manager?.id,
-          kyaResultId: kya.id,
+          createdById: req.user!.id,
         },
       });
       await tx.stage.createMany({
@@ -102,8 +138,12 @@ projectsRouter.post(
           procedureId: procedure.id,
           flag: procedure.flag,
           sortOrder: index + 1,
-          expectedDuration: procedure.expectedDuration,
+          expectedDurationDays: procedure.expectedDurationDays,
         })),
+      });
+      await tx.kyaResult.update({
+        where: { id: kya.id },
+        data: { projectId: created.id },
       });
       return created;
     });
@@ -126,29 +166,35 @@ projectsRouter.get(
     const project = await prisma.project.findUnique({
       where: { id: req.params.id },
       include: {
-        stages: { include: { procedure: true, application: { include: { case: true } } }, orderBy: { sortOrder: "asc" } },
+        stages: {
+          include: { procedure: { include: { dependencies: true } }, application: { include: { case: true } } },
+          orderBy: { sortOrder: "asc" },
+        },
         permanentCaseManager: { select: { id: true, email: true } },
       },
     });
     if (!project) throw AppError.notFound("Project not found");
-    const staff = req.user!.roles.some((role) => ["case_manager", "supervisor", "sysadmin"].includes(role));
-    if (!staff && project.ownerProfileId !== profile.id) throw AppError.forbidden();
+    const staff = hasRole(req.user!.roles, UserRole.CASE_MANAGER, UserRole.SUPERVISOR, UserRole.SYSADMIN);
+    if (!staff && project.profileId !== profile.id) throw AppError.forbidden();
+
+    const completedCodes = new Set(
+      project.stages
+        .filter((stage) => stage.application?.case?.internalStatus === "COMPLETED")
+        .map((stage) => stage.procedureId),
+    );
+    const lockedCodes = new Set(
+      project.stages
+        .filter((stage) =>
+          stage.procedure.dependencies.some((dep) => !completedCodes.has(dep.dependsOnProcedureId)),
+        )
+        .map((stage) => stage.procedure.code),
+    );
+
     res.json({
       data: {
         ...project,
         volumeAmount: project.volumeAmount.toFixed(2),
-        stages: project.stages.map((stage) => ({
-          id: stage.id,
-          flag: stage.flag,
-          sortOrder: stage.sortOrder,
-          expectedDuration: stage.expectedDuration,
-          procedure: stage.procedure,
-          displayStatus: toStageStatus({
-            notApplicable: stage.notApplicable,
-            hasApplication: Boolean(stage.applicationId),
-            caseStatus: stage.application?.case?.internalStatus,
-          }),
-        })),
+        stages: serializeProjectStages(project.stages, lockedCodes),
       },
     });
   }),
@@ -160,10 +206,10 @@ projectsRouter.post(
   asyncHandler(async (req, res) => {
     const profile = await investorProfile(req.user!.id);
     const project = await prisma.project.findUnique({ where: { id: req.params.id } });
-    if (!project || project.ownerProfileId !== profile.id) throw AppError.forbidden();
+    if (!project || project.profileId !== profile.id) throw AppError.forbidden();
     const updated = await prisma.project.update({
       where: { id: project.id },
-      data: { status: "suspended" },
+      data: { status: ProjectStatus.SUSPENDED },
     });
     res.json({ data: updated });
   }),

@@ -18,7 +18,3 @@ export function parseMoney(value: string, field = "amount"): Prisma.Decimal {
   }
   return decimal;
 }
-
-export function remainingCapacity(target: DecimalLike, funded: DecimalLike): Prisma.Decimal {
-  return new Prisma.Decimal(target).minus(new Prisma.Decimal(funded));
-}

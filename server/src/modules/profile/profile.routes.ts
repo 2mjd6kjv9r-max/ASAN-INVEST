@@ -1,5 +1,10 @@
 import { Router } from "express";
 import { z } from "zod";
+import {
+  ClassificationKind,
+  RepresentationAuthority,
+} from "@prisma/client";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "../../lib/prisma";
 import { asyncHandler } from "../../lib/async-handler";
 import { authenticate } from "../../middleware/authenticate";
@@ -7,16 +12,18 @@ import { validate } from "../../middleware/validate";
 import { writeAudit } from "../../lib/audit";
 import { serializeProfile, serializeUser } from "../../serializers/user";
 import { AppError } from "../../lib/errors";
+import { resolveClassificationId } from "../../lib/classifications";
+import { jsonValue } from "../../lib/json";
 
 export const profileRouter = Router();
 
 const updateSchema = z.object({
-  country: z.string().length(2).optional(),
-  sector: z.string().optional(),
-  activityArea: z.string().optional(),
+  countryId: z.string().optional(),
+  sectorId: z.string().optional(),
+  activityAreaId: z.string().optional(),
   contacts: z.record(z.unknown()).optional(),
   companyName: z.string().optional(),
-  companyCountry: z.string().length(2).optional(),
+  companyCountryId: z.string().optional(),
   companyRegId: z.string().optional(),
   taxId: z.string().optional(),
   companyActivity: z.string().optional(),
@@ -26,14 +33,18 @@ const updateSchema = z.object({
 
 const representationSchema = z.object({
   representativeEmail: z.string().email(),
-  authority: z.enum(["view", "prepare", "sign"]),
+  authority: z.nativeEnum(RepresentationAuthority),
   validTo: z.string().datetime().optional(),
+  powerOfAttorneyDocumentId: z.string().uuid().optional(),
 });
 
 async function loadUser(userId: string) {
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    include: { profile: { include: { versions: { orderBy: { version: "desc" }, take: 20 } } } },
+    include: {
+      roleAssignments: true,
+      profile: { include: { versions: { orderBy: { version: "desc" }, take: 20 } } },
+    },
   });
   if (!user?.profile) throw AppError.notFound("Profile not found");
   return user;
@@ -63,7 +74,26 @@ profileRouter.put(
   asyncHandler(async (req, res) => {
     const user = await loadUser(req.user!.id);
     const nextVersion = user.profile!.version + 1;
-    const { locale, ...profileFields } = req.body;
+    const { locale, countryId, sectorId, activityAreaId, companyCountryId, ...rest } = req.body as z.infer<
+      typeof updateSchema
+    >;
+    const data: Prisma.ProfileUncheckedUpdateInput = {
+      version: nextVersion,
+    };
+    if (countryId) data.countryId = await resolveClassificationId(ClassificationKind.COUNTRY, countryId);
+    if (sectorId) data.sectorId = await resolveClassificationId(ClassificationKind.SECTOR, sectorId);
+    if (activityAreaId) {
+      data.activityAreaId = await resolveClassificationId(ClassificationKind.ACTIVITY, activityAreaId);
+    }
+    if (companyCountryId) {
+      data.companyCountryId = await resolveClassificationId(ClassificationKind.COUNTRY, companyCountryId);
+    }
+    if (rest.contacts) data.contacts = jsonValue(rest.contacts);
+    if (rest.companyName !== undefined) data.companyName = rest.companyName;
+    if (rest.companyRegId !== undefined) data.companyRegId = rest.companyRegId;
+    if (rest.taxId !== undefined) data.taxId = rest.taxId;
+    if (rest.companyActivity !== undefined) data.companyActivity = rest.companyActivity;
+    if (rest.uboStructure !== undefined) data.uboStructure = jsonValue(rest.uboStructure);
     const updated = await prisma.$transaction(async (tx) => {
       await tx.profileVersion.create({
         data: {
@@ -74,7 +104,7 @@ profileRouter.put(
       });
       const profile = await tx.profile.update({
         where: { id: user.profile!.id },
-        data: { ...profileFields, version: nextVersion },
+        data,
       });
       if (locale) {
         await tx.user.update({ where: { id: user.id }, data: { locale } });
@@ -121,7 +151,7 @@ profileRouter.get(
     const user = await loadUser(req.user!.id);
     const rows = await prisma.representation.findMany({
       where: { profileId: user.profile!.id },
-      include: { representative: { select: { id: true, email: true } } },
+      include: { representativeUser: { select: { id: true, email: true } } },
     });
     res.json({ data: rows });
   }),
@@ -133,13 +163,16 @@ profileRouter.post(
   validate(representationSchema),
   asyncHandler(async (req, res) => {
     const owner = await loadUser(req.user!.id);
-    const representative = await prisma.user.findUnique({ where: { email: req.body.representativeEmail.toLowerCase() } });
+    const representative = await prisma.user.findUnique({
+      where: { email: req.body.representativeEmail.toLowerCase() },
+    });
     if (!representative) throw AppError.notFound("Representative account not found");
     const row = await prisma.representation.create({
       data: {
         profileId: owner.profile!.id,
         representativeUserId: representative.id,
         authority: req.body.authority,
+        powerOfAttorneyDocumentId: req.body.powerOfAttorneyDocumentId,
         validFrom: new Date(),
         validTo: req.body.validTo ? new Date(req.body.validTo) : null,
       },

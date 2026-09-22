@@ -7,7 +7,7 @@ export const asanLoginStub = {
     return {
       provider: "asan_login",
       available: false,
-      identificationLevelIfCompleted: "legal",
+      identificationLevelIfCompleted: "LEGAL",
       message:
         "ASAN Login is not connected in Phase 1. Use email registration (level 1) and continue legal actions via a representative or when the provider is specified.",
     };

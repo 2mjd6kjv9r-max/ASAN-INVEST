@@ -1,10 +1,14 @@
-import type { Profile, User } from "@prisma/client";
+import type { Profile, User, UserRoleAssignment } from "@prisma/client";
+import { activeRoles } from "../lib/roles";
 
-export function serializeUser(user: User & { profile?: Profile | null }) {
+export function serializeUser(
+  user: User & { profile?: Profile | null; roleAssignments?: UserRoleAssignment[] },
+) {
+  const roles = user.roleAssignments ? activeRoles(user.roleAssignments) : [];
   return {
     id: user.id,
     email: user.email,
-    roles: user.roles,
+    roles,
     identificationLevel: user.identificationLevel,
     locale: user.locale,
     status: user.status,
@@ -15,7 +19,8 @@ export function serializeUser(user: User & { profile?: Profile | null }) {
     consents: user.consents,
     consentVersion: user.consentVersion,
     consentedAt: user.consentedAt?.toISOString() ?? null,
-    screeningOutcome: user.screeningOutcome,
+    pepSanctionsStatus: user.pepSanctionsStatus,
+    pepSanctionsCheckedAt: user.pepSanctionsCheckedAt?.toISOString() ?? null,
     profile: user.profile ? serializeProfile(user.profile) : null,
   };
 }
@@ -23,17 +28,16 @@ export function serializeUser(user: User & { profile?: Profile | null }) {
 export function serializeProfile(profile: Profile) {
   return {
     id: profile.id,
-    country: profile.country,
-    sector: profile.sector,
-    activityArea: profile.activityArea,
+    countryId: profile.countryId,
+    sectorId: profile.sectorId,
+    activityAreaId: profile.activityAreaId,
     contacts: profile.contacts,
     companyName: profile.companyName,
-    companyCountry: profile.companyCountry,
+    companyCountryId: profile.companyCountryId,
     companyRegId: profile.companyRegId,
     taxId: profile.taxId,
     companyActivity: profile.companyActivity,
     uboStructure: profile.uboStructure,
     version: profile.version,
-    guestAnswers: profile.guestAnswers,
   };
 }

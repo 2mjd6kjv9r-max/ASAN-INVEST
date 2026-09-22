@@ -4,6 +4,12 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import { z } from "zod";
+import {
+  ClassificationKind,
+  DocumentLinkObject,
+  DocumentSource,
+  UserRole,
+} from "@prisma/client";
 import { env } from "../../config/env";
 import { prisma } from "../../lib/prisma";
 import { asyncHandler } from "../../lib/async-handler";
@@ -11,6 +17,7 @@ import { authenticate } from "../../middleware/authenticate";
 import { AppError } from "../../lib/errors";
 import { writeAudit } from "../../lib/audit";
 import { validate } from "../../middleware/validate";
+import { hasRole } from "../../lib/roles";
 
 fs.mkdirSync(env.UPLOAD_DIR, { recursive: true });
 
@@ -36,21 +43,24 @@ documentsRouter.get(
   "/documents",
   authenticate,
   asyncHandler(async (req, res) => {
+    const profile = await prisma.profile.findUnique({ where: { userId: req.user!.id } });
     const rows = await prisma.document.findMany({
-      where: { uploadedById: req.user!.id },
-      include: { links: true },
+      where: profile
+        ? { links: { some: { objectType: DocumentLinkObject.PROFILE, objectId: profile.id } } }
+        : { id: "__none__" },
+      include: { type: true, links: true },
       orderBy: { createdAt: "desc" },
     });
     res.json({
       data: rows.map((row) => ({
         id: row.id,
-        typeCode: row.typeCode,
+        typeCode: row.type.code,
+        typeNames: row.type.names,
         version: row.version,
         validUntil: row.validUntil,
         source: row.source,
         originalName: row.originalName,
         mimeType: row.mimeType,
-        sizeBytes: row.sizeBytes,
         createdAt: row.createdAt,
       })),
     });
@@ -63,18 +73,24 @@ documentsRouter.post(
   upload.single("file"),
   asyncHandler(async (req, res) => {
     if (!req.file) throw AppError.badRequest("FILE_REQUIRED", "A file is required");
-    const typeCode = typeof req.body.typeCode === "string" ? req.body.typeCode : "other";
+    const typeCode = typeof req.body.typeCode === "string" ? req.body.typeCode : "identity-document";
+    const type =
+      (await prisma.classification.findUnique({
+        where: { kind_code: { kind: ClassificationKind.DOCUMENT_TYPE, code: typeCode } },
+      })) ??
+      (await prisma.classification.findFirst({ where: { kind: ClassificationKind.DOCUMENT_TYPE } }));
+    if (!type) throw AppError.badRequest("NOT_CONFIGURED", "Document types are not seeded");
     const profile = await prisma.profile.findUnique({ where: { userId: req.user!.id } });
     const doc = await prisma.document.create({
       data: {
-        typeCode,
-        source: "uploaded",
+        typeId: type.id,
+        source: DocumentSource.UPLOADED,
         storageKey: req.file.filename,
         originalName: req.file.originalname,
         mimeType: req.file.mimetype,
-        sizeBytes: req.file.size,
-        uploadedById: req.user!.id,
-        links: profile ? { create: { profileId: profile.id } } : undefined,
+        links: profile
+          ? { create: { objectType: DocumentLinkObject.PROFILE, objectId: profile.id } }
+          : undefined,
       },
     });
     await writeAudit({
@@ -84,7 +100,7 @@ documentsRouter.post(
       objectId: doc.id,
     });
     res.status(201).json({
-      data: { id: doc.id, typeCode: doc.typeCode, originalName: doc.originalName, sizeBytes: doc.sizeBytes },
+      data: { id: doc.id, typeCode: type.code, originalName: doc.originalName },
     });
   }),
 );
@@ -94,15 +110,21 @@ documentsRouter.get(
   authenticate,
   asyncHandler(async (req, res) => {
     const profile = await prisma.profile.findUnique({ where: { userId: req.user!.id } });
-    const application = await prisma.application.findUnique({ where: { id: req.params.id } });
+    const application = await prisma.application.findUnique({
+      where: { id: req.params.id },
+      include: { project: true },
+    });
     if (!application) throw AppError.notFound();
-    const staff = req.user!.roles.some((role) => ["case_manager", "supervisor", "sysadmin"].includes(role));
-    if (!staff && application.profileId !== profile?.id) throw AppError.forbidden();
+    const staff = hasRole(req.user!.roles, UserRole.CASE_MANAGER, UserRole.SUPERVISOR, UserRole.SYSADMIN);
+    const owns = application.profileId === profile?.id || application.project?.profileId === profile?.id;
+    if (!staff && !owns) throw AppError.forbidden();
     const messages = await prisma.message.findMany({
-      where: { applicationId: application.id, ...(staff ? {} : { internal: false }) },
+      where: { applicationId: application.id, ...(staff ? {} : { isInternal: false }) },
       orderBy: { createdAt: "asc" },
     });
-    res.json({ data: messages.map(({ ...row }) => row) });
+    res.json({
+      data: staff ? messages : messages.map(({ isInternal: _hidden, ...row }) => row),
+    });
   }),
 );
 
@@ -111,17 +133,17 @@ documentsRouter.post(
   authenticate,
   validate(z.object({ body: z.string().min(1).max(5000), internal: z.boolean().optional() })),
   asyncHandler(async (req, res) => {
-    const staff = req.user!.roles.some((role) => ["case_manager", "supervisor", "sysadmin"].includes(role));
-    const internal = Boolean(req.body.internal && staff);
+    const staff = hasRole(req.user!.roles, UserRole.CASE_MANAGER, UserRole.SUPERVISOR, UserRole.SYSADMIN);
+    const isInternal = Boolean(req.body.internal && staff);
     const message = await prisma.message.create({
       data: {
         applicationId: req.params.id,
         senderUserId: req.user!.id,
         body: req.body.body,
-        internal,
+        isInternal,
       },
     });
-    res.status(201).json({ data: message });
+    res.status(201).json({ data: staff ? message : { ...message, isInternal: undefined } });
   }),
 );
 

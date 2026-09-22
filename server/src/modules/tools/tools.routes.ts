@@ -1,15 +1,18 @@
+import { randomUUID } from "node:crypto";
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../../lib/prisma";
 import { asyncHandler } from "../../lib/async-handler";
 import { validate } from "../../middleware/validate";
 import { authenticate } from "../../middleware/authenticate";
+import { AppError } from "../../lib/errors";
+import { asJsonMap, jsonValue } from "../../lib/json";
 import { ruleEngine } from "../../services/rules/engine";
 
 export const toolsRouter = Router();
 
 const routeSchema = z.object({
-  country: z.string().length(2),
+  country: z.string().min(1),
   sector: z.string().min(1),
   volumeAmount: z.string().regex(/^\d+(\.\d{1,2})?$/),
   volumeCurrency: z.enum(["AZN", "USD", "EUR"]),
@@ -41,6 +44,20 @@ const kyaSchema = z.object({
   siParameters: z.record(z.unknown()).optional(),
 });
 
+async function appendProfileTool(
+  userId: string,
+  key: "savedRoute" | "savedIncentive",
+  entry: Record<string, unknown>,
+) {
+  const profile = await prisma.profile.findUnique({ where: { userId } });
+  if (!profile) throw AppError.notFound("Profile not found");
+  const contacts = asJsonMap(profile.contacts);
+  const list = Array.isArray(contacts[key]) ? (contacts[key] as unknown[]) : [];
+  contacts[key] = [...list, entry];
+  await prisma.profile.update({ where: { id: profile.id }, data: { contacts: jsonValue(contacts) } });
+  return profile;
+}
+
 toolsRouter.post(
   "/route/calculate",
   validate(routeSchema),
@@ -56,17 +73,16 @@ toolsRouter.post(
   validate(routeSchema),
   asyncHandler(async (req, res) => {
     const result = await ruleEngine.route(req.body);
-    const profile = await prisma.profile.findUnique({ where: { userId: req.user!.id } });
-    const saved = await prisma.routeResult.create({
-      data: {
-        profileId: profile?.id,
-        input: req.body,
-        output: result.output,
-        ruleSetId: result.ruleSetId,
-        ruleVersion: result.ruleVersion,
-      },
+    const id = randomUUID();
+    await appendProfileTool(req.user!.id, "savedRoute", {
+      id,
+      input: req.body,
+      output: result.output,
+      ruleSetId: result.ruleSetId,
+      ruleVersion: result.ruleVersion,
+      savedAt: new Date().toISOString(),
     });
-    res.status(201).json({ data: { id: saved.id, ...result.output, ruleVersion: result.ruleVersion } });
+    res.status(201).json({ data: { id, ...result.output, ruleVersion: result.ruleVersion } });
   }),
 );
 
@@ -85,22 +101,16 @@ toolsRouter.post(
   validate(incentiveSchema),
   asyncHandler(async (req, res) => {
     const result = await ruleEngine.incentive(req.body);
-    const profile = await prisma.profile.findUnique({ where: { userId: req.user!.id } });
-    const saved = await prisma.incentiveResult.create({
-      data: {
-        profileId: profile?.id,
-        input: req.body,
-        outcome: result.output.outcome,
-        explanationAz: result.output.explanationAz,
-        explanationEn: result.output.explanationEn,
-        legalCitation: result.output.legalCitation,
-        estimatedSavingNote: result.output.estimatedSavingNote,
-        alternatives: result.output.alternatives,
-        ruleSetId: result.ruleSetId,
-        ruleVersion: result.ruleVersion,
-      },
+    const id = randomUUID();
+    await appendProfileTool(req.user!.id, "savedIncentive", {
+      id,
+      input: req.body,
+      output: result.output,
+      ruleSetId: result.ruleSetId,
+      ruleVersion: result.ruleVersion,
+      savedAt: new Date().toISOString(),
     });
-    res.status(201).json({ data: { id: saved.id, ...result.output, ruleVersion: result.ruleVersion } });
+    res.status(201).json({ data: { id, ...result.output, ruleVersion: result.ruleVersion } });
   }),
 );
 
@@ -130,9 +140,10 @@ toolsRouter.post(
   asyncHandler(async (req, res) => {
     const result = await ruleEngine.kya(req.body);
     const profile = await prisma.profile.findUnique({ where: { userId: req.user!.id } });
+    if (!profile) throw AppError.notFound("Profile not found");
     const saved = await prisma.kyaResult.create({
       data: {
-        profileId: profile!.id,
+        profileId: profile.id,
         inputParameters: req.body,
         procedures: result.procedures,
         ruleSetId: result.ruleSetId,
@@ -156,4 +167,3 @@ toolsRouter.get(
     res.json({ data: row });
   }),
 );
-

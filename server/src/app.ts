@@ -7,7 +7,7 @@ import { env } from "./config/env";
 import { logger } from "./lib/logger";
 import { requestId } from "./middleware/request-id";
 import { errorHandler } from "./middleware/error-handler";
-import { apiRateLimiter } from "./middleware/rate-limit";
+import { apiRateLimiter, honeypot } from "./middleware/rate-limit";
 import { healthRouter } from "./modules/health/health.routes";
 import { authRouter } from "./modules/auth/auth.routes";
 import { guestRouter } from "./modules/auth/guest.routes";
@@ -45,6 +45,7 @@ export function createApp() {
     }),
   );
   app.use(apiRateLimiter);
+  app.use(honeypot);
 
   app.use("/health", healthRouter);
   app.use("/api/v1/health", healthRouter);

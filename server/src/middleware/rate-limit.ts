@@ -1,5 +1,17 @@
+import type { NextFunction, Request, Response } from "express";
 import rateLimit from "express-rate-limit";
 import { env } from "../config/env";
+import { AppError } from "../lib/errors";
+
+/** NFR-02 bot hook: silent drop when a honeypot field is filled. */
+export function honeypot(req: Request, _res: Response, next: NextFunction) {
+  const body = req.body as { website?: unknown } | undefined;
+  if (body && typeof body.website === "string" && body.website.length > 0) {
+    next(AppError.tooMany("Too many requests"));
+    return;
+  }
+  next();
+}
 
 export const authRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,

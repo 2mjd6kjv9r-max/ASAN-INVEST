@@ -13,7 +13,7 @@ describe("KYA FR-KYA-02", () => {
           confirmedParameters: false,
         },
         [],
-        1,
+        "1",
       ),
     ).toThrow(/Unconfirmed/);
   });
@@ -28,8 +28,8 @@ describe("KYA FR-KYA-02", () => {
         confirmedParameters: true,
       },
       [{ code: "company_registration", sectorTags: [], always: true }],
-      3,
+      "3",
     );
-    expect(matches[0]).toMatchObject({ code: "company_registration", ruleVersion: 3 });
+    expect(matches[0]).toMatchObject({ code: "company_registration", ruleVersion: "3" });
   });
 });

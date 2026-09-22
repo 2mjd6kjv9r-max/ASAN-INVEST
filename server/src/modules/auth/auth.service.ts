@@ -1,52 +1,58 @@
-import type { User } from "@prisma/client";
+import type { User, UserRoleAssignment, Profile } from "@prisma/client";
+import {
+  AuthProvider,
+  IdentificationLevel,
+  UserRole,
+  UserStatus,
+} from "@prisma/client";
 import { env } from "../../config/env";
 import { writeAudit } from "../../lib/audit";
 import { AppError } from "../../lib/errors";
 import { hashPassword, verifyPassword } from "../../lib/passwords";
 import { prisma } from "../../lib/prisma";
+import { asJsonMap } from "../../lib/json";
+import { activeRoles, requiresTwoFactor, userWithRolesInclude } from "../../lib/roles";
 import {
   generateNumericCode,
-  generateOpaqueToken,
   hashToken,
-  parseDurationToMs,
   signAccessToken,
+  signPurposeToken,
+  signRefreshToken,
+  verifyPurposeToken,
+  verifyRefreshToken,
 } from "../../lib/tokens";
 import { emailService } from "../../integrations/email/email.service";
-import { requiresTwoFactor } from "../../domain/identification";
 import { asanLoginStub } from "../../integrations/asan-imza/asan-imza.stub";
 
-const INCLUDE = { profile: true } as const;
+type AuthUser = User & { profile: Profile | null; roleAssignments: UserRoleAssignment[] };
 
-function issueAccess(user: User) {
+function issueAccess(user: AuthUser) {
   return signAccessToken({
     sub: user.id,
-    roles: user.roles,
+    roles: activeRoles(user.roleAssignments),
     email: user.email,
     identificationLevel: user.identificationLevel,
   });
 }
 
-async function persistRefreshToken(userId: string, userAgent?: string) {
-  const token = generateOpaqueToken();
-  const expiresAt = new Date(Date.now() + parseDurationToMs(env.JWT_REFRESH_EXPIRES_IN));
-  await prisma.refreshToken.create({
-    data: { userId, tokenHash: hashToken(token), expiresAt, userAgent: userAgent ?? null },
-  });
-  return { token, expiresAt };
+function issueRefresh(userId: string) {
+  return signRefreshToken(userId);
 }
 
 async function copyGuestSession(userId: string, profileId: string, guestSessionToken?: string) {
   if (!guestSessionToken) return;
-  const session = await prisma.guestSession.findUnique({ where: { tokenHash: hashToken(guestSessionToken) } });
+  const session = await prisma.guestSession.findUnique({ where: { id: guestSessionToken } });
   if (!session || session.expiresAt < new Date()) return;
-  const answers = session.answers as Record<string, unknown>;
+  const answers = asJsonMap(session.answers);
+  const existing = await prisma.profile.findUnique({ where: { id: profileId } });
+  const contacts = { ...asJsonMap(existing?.contacts), guestAnswers: session.answers };
   await prisma.profile.update({
     where: { id: profileId },
-    data: {
-      guestAnswers: session.answers === null ? undefined : session.answers,
-      country: (answers.country as string | undefined) ?? undefined,
-      sector: (answers.sector as string | undefined) ?? undefined,
-    },
+    data: { contacts },
+  });
+  await prisma.guestSession.update({
+    where: { id: session.id },
+    data: { convertedUserId: userId, email: answers.email as string | undefined },
   });
   await writeAudit({
     actorId: userId,
@@ -74,24 +80,22 @@ export const authService = {
       data: {
         email: input.email,
         passwordHash: await hashPassword(input.password),
-        roles: ["investor"],
         locale: input.locale ?? "az",
-        status: autoVerify ? "active" : "pending_verification",
+        status: UserStatus.ACTIVE,
+        authProvider: AuthProvider.EMAIL,
         emailVerifiedAt: autoVerify ? new Date() : null,
-        identificationLevel: autoVerify ? "basic" : "basic",
-        consents: (input.consents ?? undefined) as object | undefined,
+        identificationLevel: IdentificationLevel.BASIC,
+        consents: input.consents ?? {},
         consentVersion: input.consents?.version ?? null,
         consentedAt: input.consents ? new Date() : null,
         profile: { create: {} },
+        roleAssignments: { create: { role: UserRole.INVESTOR } },
       },
-      include: INCLUDE,
+      include: userWithRolesInclude,
     });
 
     if (!autoVerify) {
-      const token = generateOpaqueToken();
-      await prisma.emailVerificationToken.create({
-        data: { userId: user.id, tokenHash: hashToken(token), expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000) },
-      });
+      const token = signPurposeToken({ sub: user.id, typ: "email_verify" }, "24h");
       await emailService.send(user.email, "Verify your ASAN Invest account", `Verification token (logged only): ${token}`);
     }
 
@@ -108,37 +112,35 @@ export const authService = {
     });
 
     const accessToken = issueAccess(user);
-    const refresh = await persistRefreshToken(user.id);
+    const refresh = issueRefresh(user.id);
     return { user, accessToken, refresh };
   },
 
   async login(input: { email: string; password: string; userAgent?: string; ipAddress?: string }) {
-    const user = await prisma.user.findUnique({ where: { email: input.email }, include: INCLUDE });
+    const user = await prisma.user.findUnique({ where: { email: input.email }, include: userWithRolesInclude });
     if (!user || !user.passwordHash) {
       throw AppError.unauthorized("Invalid email or password", "INVALID_CREDENTIALS");
     }
     const matches = await verifyPassword(input.password, user.passwordHash);
     if (!matches) throw AppError.unauthorized("Invalid email or password", "INVALID_CREDENTIALS");
-    if (user.status === "disabled") throw AppError.forbidden("Account is disabled", "ACCOUNT_DISABLED");
-    if (user.status === "pending_verification" && env.REQUIRE_EMAIL_VERIFICATION) {
+    if (user.status === UserStatus.DISABLED) throw AppError.forbidden("Account is disabled", "ACCOUNT_DISABLED");
+    if (!user.emailVerifiedAt && env.REQUIRE_EMAIL_VERIFICATION) {
       throw AppError.forbidden("Email verification required", "EMAIL_NOT_VERIFIED");
     }
 
-    if (requiresTwoFactor(user.roles)) {
+    const roles = activeRoles(user.roleAssignments);
+    if (requiresTwoFactor(roles)) {
       const code = env.NODE_ENV === "test" ? "123456" : generateNumericCode();
-      const challenge = await prisma.twoFactorChallenge.create({
-        data: {
-          userId: user.id,
-          codeHash: hashToken(code),
-          expiresAt: new Date(Date.now() + 10 * 60 * 1000),
-        },
-      });
+      const challengeId = signPurposeToken(
+        { sub: user.id, typ: "two_factor", codeHash: hashToken(code) },
+        "10m",
+      );
       await emailService.send(user.email, "ASAN Invest sign-in code", `Sign-in code (logged only): ${code}`);
-      return { twoFactorRequired: true as const, challengeId: challenge.id };
+      return { twoFactorRequired: true as const, challengeId };
     }
 
     const accessToken = issueAccess(user);
-    const refresh = await persistRefreshToken(user.id, input.userAgent);
+    const refresh = issueRefresh(user.id);
     await writeAudit({
       actorId: user.id,
       action: "auth.login",
@@ -149,52 +151,58 @@ export const authService = {
     return { twoFactorRequired: false as const, user, accessToken, refresh };
   },
 
-  async verifyTwoFactor(challengeId: string, code: string, userAgent?: string) {
-    const challenge = await prisma.twoFactorChallenge.findUnique({
-      where: { id: challengeId },
-      include: { user: { include: INCLUDE } },
-    });
-    if (!challenge || challenge.usedAt || challenge.expiresAt < new Date()) {
+  async verifyTwoFactor(challengeId: string, code: string) {
+    let payload;
+    try {
+      payload = verifyPurposeToken(challengeId, "two_factor");
+    } catch {
       throw AppError.unauthorized("Two-factor challenge is invalid", "TWO_FACTOR_INVALID");
     }
-    if (hashToken(code) !== challenge.codeHash) {
+    if (!payload.codeHash || hashToken(code) !== payload.codeHash) {
       throw AppError.unauthorized("Two-factor code is invalid", "TWO_FACTOR_INVALID");
     }
-    await prisma.twoFactorChallenge.update({ where: { id: challenge.id }, data: { usedAt: new Date() } });
-    if (!challenge.user.twoFactorEnabled) {
-      await prisma.user.update({ where: { id: challenge.userId }, data: { twoFactorEnabled: true } });
-    }
-    const user = { ...challenge.user, twoFactorEnabled: true };
-    const accessToken = issueAccess(user);
-    const refresh = await persistRefreshToken(user.id, userAgent);
-    return { user, accessToken, refresh };
+    const updated = await prisma.user.update({
+      where: { id: payload.sub },
+      data: { twoFactorEnabled: true },
+      include: userWithRolesInclude,
+    });
+    const accessToken = issueAccess(updated);
+    const refresh = issueRefresh(updated.id);
+    await writeAudit({
+      actorId: updated.id,
+      action: "auth.2fa",
+      objectType: "user",
+      objectId: updated.id,
+    });
+    return { user: updated, accessToken, refresh };
   },
 
   async refresh(refreshToken: string | undefined) {
     if (!refreshToken) throw AppError.unauthorized("Refresh token missing", "REFRESH_MISSING");
-    const stored = await prisma.refreshToken.findUnique({
-      where: { tokenHash: hashToken(refreshToken) },
-      include: { user: { include: INCLUDE } },
-    });
-    if (!stored || stored.revokedAt || stored.expiresAt < new Date()) {
+    let payload;
+    try {
+      payload = verifyRefreshToken(refreshToken);
+    } catch {
       throw AppError.unauthorized("Refresh token is invalid", "REFRESH_INVALID");
     }
-    await prisma.refreshToken.update({ where: { id: stored.id }, data: { revokedAt: new Date() } });
-    const accessToken = issueAccess(stored.user);
-    const refresh = await persistRefreshToken(stored.user.id, stored.userAgent ?? undefined);
-    return { user: stored.user, accessToken, refresh };
+    const user = await prisma.user.findUnique({
+      where: { id: payload.sub },
+      include: userWithRolesInclude,
+    });
+    if (!user || user.status === UserStatus.DISABLED) {
+      throw AppError.unauthorized("Refresh token is invalid", "REFRESH_INVALID");
+    }
+    const accessToken = issueAccess(user);
+    const refresh = issueRefresh(user.id);
+    return { user, accessToken, refresh };
   },
 
-  async logout(refreshToken: string | undefined) {
-    if (!refreshToken) return;
-    await prisma.refreshToken.updateMany({
-      where: { tokenHash: hashToken(refreshToken), revokedAt: null },
-      data: { revokedAt: new Date() },
-    });
+  async logout(_refreshToken: string | undefined) {
+    return;
   },
 
   async me(userId: string) {
-    const user = await prisma.user.findUnique({ where: { id: userId }, include: INCLUDE });
+    const user = await prisma.user.findUnique({ where: { id: userId }, include: userWithRolesInclude });
     if (!user) throw AppError.unauthorized();
     return user;
   },
@@ -202,40 +210,34 @@ export const authService = {
   async forgotPassword(email: string) {
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user) return;
-    const token = generateOpaqueToken();
-    await prisma.passwordResetToken.create({
-      data: { userId: user.id, tokenHash: hashToken(token), expiresAt: new Date(Date.now() + 60 * 60 * 1000) },
-    });
+    const token = signPurposeToken({ sub: user.id, typ: "password_reset" }, "1h");
     await emailService.send(user.email, "Reset your ASAN Invest password", `Reset token (logged only): ${token}`);
   },
 
   async resetPassword(token: string, password: string) {
-    const stored = await prisma.passwordResetToken.findUnique({ where: { tokenHash: hashToken(token) } });
-    if (!stored || stored.usedAt || stored.expiresAt < new Date()) {
+    let payload;
+    try {
+      payload = verifyPurposeToken(token, "password_reset");
+    } catch {
       throw AppError.badRequest("RESET_INVALID", "Reset token is invalid or expired");
     }
-    await prisma.$transaction([
-      prisma.user.update({ where: { id: stored.userId }, data: { passwordHash: await hashPassword(password) } }),
-      prisma.passwordResetToken.update({ where: { id: stored.id }, data: { usedAt: new Date() } }),
-      prisma.refreshToken.updateMany({
-        where: { userId: stored.userId, revokedAt: null },
-        data: { revokedAt: new Date() },
-      }),
-    ]);
+    await prisma.user.update({
+      where: { id: payload.sub },
+      data: { passwordHash: await hashPassword(password) },
+    });
   },
 
   async verifyEmail(token: string) {
-    const stored = await prisma.emailVerificationToken.findUnique({ where: { tokenHash: hashToken(token) } });
-    if (!stored || stored.usedAt || stored.expiresAt < new Date()) {
+    let payload;
+    try {
+      payload = verifyPurposeToken(token, "email_verify");
+    } catch {
       throw AppError.badRequest("VERIFY_INVALID", "Verification token is invalid or expired");
     }
-    await prisma.$transaction([
-      prisma.user.update({
-        where: { id: stored.userId },
-        data: { status: "active", emailVerifiedAt: new Date(), identificationLevel: "basic" },
-      }),
-      prisma.emailVerificationToken.update({ where: { id: stored.id }, data: { usedAt: new Date() } }),
-    ]);
+    await prisma.user.update({
+      where: { id: payload.sub },
+      data: { emailVerifiedAt: new Date(), identificationLevel: IdentificationLevel.BASIC },
+    });
   },
 
   asanLogin() {

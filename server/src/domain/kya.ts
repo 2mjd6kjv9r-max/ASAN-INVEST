@@ -11,7 +11,7 @@ export type KyaInput = {
 export type ProcedureMatch = {
   code: string;
   reason: string;
-  ruleVersion: number;
+  ruleVersion: string;
 };
 
 export type KyaCatalogProcedure = {
@@ -24,7 +24,7 @@ export type KyaCatalogProcedure = {
 export function evaluateKya(
   input: KyaInput,
   catalog: KyaCatalogProcedure[],
-  ruleVersion: number,
+  ruleVersion: string,
 ): ProcedureMatch[] {
   if (!input.confirmedParameters) {
     throw Object.assign(new Error("Unconfirmed parameters must not reach the rule engine"), {

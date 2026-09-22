@@ -1,13 +1,21 @@
 import { describe, expect, it } from "vitest";
+import { CaseInternalStatus, UserRole } from "@prisma/client";
 import { addWorkingDays, canTransition } from "./workflow";
 import { assertLinkedApplication, nextApplicationNumber } from "./application";
 import { assertIdentificationLevel } from "./identification";
+import { IdentificationLevel } from "@prisma/client";
 
 describe("workflow and application invariants", () => {
   it("allows supervisor-only reopen FR-CASE-07", () => {
-    expect(canTransition("rejected", "assigned", ["supervisor"])).toBe(true);
-    expect(canTransition("rejected", "assigned", ["case_manager"])).toBe(false);
-    expect(canTransition("rejected", "assigned", ["investor"])).toBe(false);
+    expect(
+      canTransition(CaseInternalStatus.REJECTED, CaseInternalStatus.UNDER_REVIEW, [UserRole.SUPERVISOR]),
+    ).toBe(true);
+    expect(
+      canTransition(CaseInternalStatus.REJECTED, CaseInternalStatus.UNDER_REVIEW, [UserRole.CASE_MANAGER]),
+    ).toBe(false);
+    expect(
+      canTransition(CaseInternalStatus.REJECTED, CaseInternalStatus.UNDER_REVIEW, [UserRole.INVESTOR]),
+    ).toBe(false);
   });
 
   it("counts working days WF-01", () => {
@@ -18,6 +26,7 @@ describe("workflow and application invariants", () => {
 
   it("enforces Z-02 linkage", () => {
     expect(() => assertLinkedApplication(undefined, undefined)).toThrow(/linked/);
+    expect(() => assertLinkedApplication("project-1", "profile-1")).toThrow(/linked/);
     expect(() => assertLinkedApplication(undefined, "profile-1")).not.toThrow();
   });
 
@@ -27,7 +36,7 @@ describe("workflow and application invariants", () => {
 
   it("sends level-2 users to the route screen instead of a dead error TZ §7.2", () => {
     try {
-      assertIdentificationLevel("basic", "legal");
+      assertIdentificationLevel(IdentificationLevel.BASIC, IdentificationLevel.LEGAL);
       throw new Error("expected gate");
     } catch (error) {
       expect((error as { code: string }).code).toBe("IDENTIFICATION_LEVEL");

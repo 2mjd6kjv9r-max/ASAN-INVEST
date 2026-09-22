@@ -4,23 +4,24 @@ on:
   push:
     paths:
       - "server/**"
+      - "package.json"
+      - "package-lock.json"
       - ".github/workflows/api.yml"
   pull_request:
     paths:
       - "server/**"
+      - "package.json"
+      - "package-lock.json"
 
 jobs:
   test:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: server
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
       - run: npm install
-      - run: npx prisma generate
+      - run: npm run db:generate
       - run: npm test
       - run: npm run lint

@@ -42,11 +42,7 @@ export const authController = {
   }),
 
   verifyTwoFactor: asyncHandler(async (req: Request, res: Response) => {
-    const result = await authService.verifyTwoFactor(
-      req.body.challengeId,
-      req.body.code,
-      req.get("user-agent") ?? undefined,
-    );
+    const result = await authService.verifyTwoFactor(req.body.challengeId, req.body.code);
     setRefreshCookie(res, result.refresh.token, result.refresh.expiresAt);
     res.json({ data: { accessToken: result.accessToken, user: serializeUser(result.user) } });
   }),

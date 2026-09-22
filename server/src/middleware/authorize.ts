@@ -1,4 +1,4 @@
-import type { UserRole } from "@prisma/client";
+import { UserRole } from "@prisma/client";
 import type { NextFunction, Request, Response } from "express";
 import { AppError } from "../lib/errors";
 
@@ -17,5 +17,5 @@ export function authorize(...roles: UserRole[]) {
 }
 
 export function authorizeInvestorOrStaff(staff: UserRole[]) {
-  return authorize("investor", ...staff);
+  return authorize(UserRole.INVESTOR, ...staff);
 }
