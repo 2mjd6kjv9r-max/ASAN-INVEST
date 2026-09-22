@@ -5,7 +5,7 @@ import { Alert, Button, ButtonLink, EmptyState, ErrorState, Field, Input, PageHe
 import { api, isApiError } from '@/lib/api'
 import type { ApplicationDto, ApplicationType, CabinetDashboard, DocumentDto, NotificationDto, ProjectDetail, ProjectListItem, Representation, User } from '@/lib/types'
 import { pickName } from '@/lib/types'
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
@@ -149,7 +149,7 @@ export function ProjectPassportPage() {
             </div>
             {stage.displayStatus === 'LOCKED' ? <p className="mt-2 text-sm text-muted">{t('cabinet.lockedWhy')}</p> : null}
             {stage.displayStatus === 'OPEN' ? (
-              <ButtonLink className="mt-3" to={`/cabinet/applications/new?stageId=${stage.id}&source=PASSPORT_STAGE`} variant="secondary">
+              <ButtonLink className="mt-3" to={`/cabinet/applications/new?stageId=${stage.id}&projectId=${project.id}&source=PASSPORT_STAGE`} variant="secondary">
                 {t('cabinet.newApplication')}
               </ButtonLink>
             ) : null}
@@ -200,7 +200,8 @@ export function ApplicationNewPage() {
           .createApplication({
             typeCode,
             source: params.get('source') || 'NEW_APPLICATION',
-            stageId: params.get('stageId'),
+            stageId: params.get('stageId') || undefined,
+            projectId: params.get('projectId') || undefined,
             answers: {},
           })
           .then((row) => navigate(`/cabinet/applications/${(row as ApplicationDto).id}`))
@@ -243,6 +244,17 @@ export function ApplicationDetailPage() {
   const [error, setError] = useState<string | null>(null)
   const app = query.data
   const schema = useMemo(() => types.data?.find((item) => item.code === app?.type.code)?.formSchema, [types.data, app?.type])
+
+  useEffect(() => {
+    const raw = query.data?.answers
+    if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+      const next: Record<string, string> = {}
+      for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+        if (value != null) next[key] = String(value)
+      }
+      setAnswers(next)
+    }
+  }, [query.data?.id, query.data?.answers])
 
   if (query.isLoading) return <Skeleton className="h-40" />
   if (!app) return <ErrorState message={t('cabinet.applications')} />

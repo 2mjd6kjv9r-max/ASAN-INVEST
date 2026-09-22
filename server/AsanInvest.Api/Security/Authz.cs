@@ -45,6 +45,12 @@ public sealed class CurrentUserMiddleware
             }
 
             var roles = Roles.Active(user.RoleAssignments, DateTimeOffset.UtcNow);
+            if (settings.Value.RequireEmailVerification && user.EmailVerifiedAt is null)
+            {
+                context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                await context.Response.WriteAsJsonAsync(new { error = new { code = "EMAIL_NOT_VERIFIED", message = "Email verification required" } });
+                return;
+            }
             if (Roles.RequiresTwoFactor(roles) && !user.TwoFactorEnabled
                 && string.Equals(context.RequestServices.GetRequiredService<IHostEnvironment>().EnvironmentName, "Production", StringComparison.OrdinalIgnoreCase))
             {
@@ -54,7 +60,6 @@ public sealed class CurrentUserMiddleware
             }
 
             context.Items[ItemKey] = new CurrentUser(user.Id, user.Email, roles, user.IdentificationLevel, user.InstitutionId);
-            _ = settings;
         }
 
         await _next(context);

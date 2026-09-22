@@ -14,7 +14,7 @@ public sealed class CasesController : ApiControllerBase
     public CasesController(PlatformService platform) => _platform = platform;
 
     [HttpGet("cases")]
-    [RequireRoles(UserRole.CASE_MANAGER, UserRole.SUPERVISOR, UserRole.SYSADMIN, UserRole.INSTITUTION_REP, UserRole.ANALYST)]
+    [RequireRoles(UserRole.CASE_MANAGER, UserRole.SUPERVISOR, UserRole.SYSADMIN, UserRole.INSTITUTION_REP)]
     public async Task<IActionResult> List([FromQuery] string? status, CancellationToken ct) =>
         OkData(await _platform.CasesAsync(CurrentUser, status, ct));
 
@@ -121,9 +121,13 @@ public sealed class DocumentsController : ApiControllerBase
         if (file is null) throw AppException.BadRequest("FILE_REQUIRED", "A file is required");
         var allowed = new[] { "application/pdf", "image/jpeg", "image/png" };
         if (!allowed.Contains(file.ContentType)) throw AppException.BadRequest("FILE_TYPE", "Upload PDF, JPEG or PNG files only");
+        var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+        if (ext is not ".pdf" and not ".jpg" and not ".jpeg" and not ".png")
+            throw AppException.BadRequest("FILE_TYPE", "Upload PDF, JPEG or PNG files only");
         if (file.Length > _settings.MaxUploadBytes) throw AppException.BadRequest("FILE_TOO_LARGE", "File exceeds the upload limit");
         Directory.CreateDirectory(_settings.UploadDir);
-        var name = $"{Guid.NewGuid()}{Path.GetExtension(file.FileName)}";
+        var mappedExt = ext is ".jpeg" ? ".jpg" : ext;
+        var name = $"{Guid.NewGuid()}{mappedExt}";
         var path = Path.Combine(_settings.UploadDir, name);
         await using (var stream = System.IO.File.Create(path))
             await file.CopyToAsync(stream, ct);

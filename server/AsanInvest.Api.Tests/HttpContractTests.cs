@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using AsanInvest.Application;
 using AsanInvest.Domain;
 using AsanInvest.Domain.Rules;
 using Microsoft.AspNetCore.Hosting;
@@ -115,6 +116,46 @@ public sealed class DomainRuleTests
     public void Application_number_is_padded()
     {
         Assert.Equal("INV-2026-00412", Workflow.NextApplicationNumber(2026, 412));
+    }
+
+    [Fact]
+    public void Purpose_token_cannot_be_used_as_access()
+    {
+        var settings = new AppSettings { JwtAccessSecret = "test-access-secret-change-me-32chars!" };
+        var token = Tokens.SignPurpose(settings, Guid.NewGuid(), "email_verify", lifetime: "24h");
+        var jwt = Tokens.Require(token, settings.JwtAccessSecret, "email_verify");
+        Assert.Equal("email_verify", jwt.Payload["typ"]?.ToString());
+        Assert.ThrowsAny<Exception>(() => Tokens.Require(token, settings.JwtAccessSecret, "access"));
+    }
+
+    [Fact]
+    public void Refresh_token_carries_jti()
+    {
+        var settings = new AppSettings { JwtRefreshSecret = "test-refresh-secret-change-me-32char", JwtRefreshExpiresIn = "7d" };
+        var token = Tokens.SignRefresh(settings, Guid.NewGuid());
+        var jwt = Tokens.Require(token, settings.JwtRefreshSecret, "refresh");
+        Assert.False(string.IsNullOrWhiteSpace(jwt.Id));
+    }
+
+    [Fact]
+    public void Two_factor_store_is_one_time_and_user_bound()
+    {
+        var store = new AuthChallengeStore();
+        var userId = Guid.NewGuid();
+        var id = store.IssueOtp(userId, Tokens.Hash("123456"), TimeSpan.FromMinutes(10));
+        Assert.True(store.ConsumeOtp(id, Tokens.Hash("123456"), out var matched));
+        Assert.Equal(userId, matched);
+        Assert.False(store.ConsumeOtp(id, Tokens.Hash("123456"), out _));
+        Assert.False(store.ConsumeOtp(id, Tokens.Hash("000000"), out _));
+    }
+
+    [Fact]
+    public void Kya_procedure_codes_read_saved_object_shape()
+    {
+        const string json = """{"procedures":[{"code":"company-reg","reason":"always"}],"ruleSetId":"00000000-0000-4000-8000-000000000099","ruleVersion":"1"}""";
+        Assert.Equal(["company-reg"], KyaProcedureCodes.Parse(json));
+        Assert.Equal(["a", "b"], KyaProcedureCodes.Parse("""["a",{"code":"b"}]"""));
+        Assert.Empty(KyaProcedureCodes.Parse("{}"));
     }
 
     [Fact]

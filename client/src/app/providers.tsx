@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { api, isApiError, setAccessToken } from '@/lib/api'
-import { clearGuestToken, readGuestToken, writeGuestToken } from '@/lib/guest'
+import { clearGuestToken, readGuestToken } from '@/lib/guest'
 import type { User } from '@/lib/types'
 import { isInternal } from '@/lib/types'
 
@@ -49,14 +49,6 @@ function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let cancelled = false
     ;(async () => {
-      try {
-        if (!readGuestToken()) {
-          const guest = await api.createGuest()
-          writeGuestToken(guest.token)
-        }
-      } catch {
-        /* guest session is optional if the API is down */
-      }
       try {
         const refreshed = (await api.refresh()) as { accessToken: string; user: User }
         if (!cancelled && refreshed?.accessToken) {

@@ -1,16 +1,7 @@
+using AsanInvest.Application;
 using Microsoft.Extensions.Logging;
 
 namespace AsanInvest.Infrastructure.Integrations;
-
-public interface IEmailSender
-{
-    Task SendAsync(string to, string subject, string body, CancellationToken ct = default);
-}
-
-public interface ISmsSender
-{
-    Task SendAsync(string to, string body, CancellationToken ct = default);
-}
 
 public interface IAsanLoginClient
 {

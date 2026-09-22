@@ -29,7 +29,11 @@ public static class Tokens
     }
 
     public static string SignRefresh(AppSettings settings, Guid userId) =>
-        Sign(settings.JwtRefreshSecret, [new("sub", userId.ToString()), new("typ", "refresh")], ParseDuration(settings.JwtRefreshExpiresIn));
+        Sign(settings.JwtRefreshSecret, [
+            new("sub", userId.ToString()),
+            new("typ", "refresh"),
+            new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
+        ], ParseDuration(settings.JwtRefreshExpiresIn));
 
     public static string SignPurpose(AppSettings settings, Guid userId, string typ, string? codeHash = null, string lifetime = "10m")
     {
@@ -51,7 +55,7 @@ public static class Tokens
             ClockSkew = TimeSpan.FromSeconds(30),
         }, out var validated);
         var jwt = (JwtSecurityToken)validated;
-        if (jwt.Payload.TryGetValue("typ", out var t) && t?.ToString() != typ)
+        if (!jwt.Payload.TryGetValue("typ", out var t) || t?.ToString() != typ)
             throw new SecurityTokenException("Invalid token type");
         return jwt;
     }

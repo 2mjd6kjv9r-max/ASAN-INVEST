@@ -40,6 +40,16 @@ public sealed class AsanInvestDbContext : DbContext, Application.IAppDbContext
     public DbSet<GuestSession> GuestSessions => Set<GuestSession>();
     public DbSet<Payment> Payments => Set<Payment>();
 
+    public async Task<string> NextApplicationPublicNumberAsync(CancellationToken cancellationToken = default)
+    {
+        var rows = await Database
+            .SqlQueryRaw<string>("SELECT next_application_public_number() AS \"Value\"")
+            .ToListAsync(cancellationToken);
+        if (rows.Count == 0 || string.IsNullOrWhiteSpace(rows[0]))
+            throw new InvalidOperationException("next_application_public_number() returned no value");
+        return rows[0];
+    }
+
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
         var now = DateTimeOffset.UtcNow;

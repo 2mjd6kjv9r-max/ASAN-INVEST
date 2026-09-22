@@ -36,6 +36,7 @@ public interface IAppDbContext
     DbSet<GuestSession> GuestSessions { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
+    Task<string> NextApplicationPublicNumberAsync(CancellationToken cancellationToken = default);
 }
 
 public sealed class AppException : Exception
@@ -101,3 +102,13 @@ public sealed class AppSettings
 }
 
 public sealed record CurrentUser(Guid Id, string Email, IReadOnlyList<AsanInvest.Domain.UserRole> Roles, AsanInvest.Domain.IdentificationLevel IdentificationLevel, Guid? InstitutionId);
+
+public interface IEmailSender
+{
+    Task SendAsync(string to, string subject, string body, CancellationToken ct = default);
+}
+
+public interface ISmsSender
+{
+    Task SendAsync(string to, string body, CancellationToken ct = default);
+}

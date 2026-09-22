@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Threading.RateLimiting;
 using AsanInvest.Api;
 using AsanInvest.Application;
 using AsanInvest.Application.Validation;
@@ -46,6 +47,7 @@ builder.Services.AddDbContext<AsanInvestDbContext>((sp, options) =>
 builder.Services.AddScoped<IAppDbContext>(sp => sp.GetRequiredService<AsanInvestDbContext>());
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<PlatformService>();
+builder.Services.AddSingleton<AuthChallengeStore>();
 builder.Services.AddSingleton<IEmailSender, LoggingEmailSender>();
 builder.Services.AddSingleton<ISmsSender, LoggingSmsSender>();
 builder.Services.AddSingleton<IAsanLoginClient, AsanLoginStub>();
@@ -105,15 +107,27 @@ builder.Services.AddRateLimiter(options =>
             error = new { code = "RATE_LIMITED", message = "Too many authentication attempts. Try again later." },
         }, token);
     };
-    options.AddFixedWindowLimiter("auth", limiter =>
+    options.AddPolicy("auth", httpContext =>
     {
-        limiter.Window = TimeSpan.FromMinutes(15);
-        limiter.PermitLimit = testing ? 1000 : 20;
+        var key = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        return RateLimitPartition.GetFixedWindowLimiter(key, _ => new FixedWindowRateLimiterOptions
+        {
+            Window = TimeSpan.FromMinutes(15),
+            PermitLimit = testing ? 1000 : 20,
+            QueueLimit = 0,
+            AutoReplenishment = true,
+        });
     });
-    options.AddFixedWindowLimiter("api", limiter =>
+    options.AddPolicy("api", httpContext =>
     {
-        limiter.Window = TimeSpan.FromMinutes(1);
-        limiter.PermitLimit = testing ? 1000 : 120;
+        var key = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        return RateLimitPartition.GetFixedWindowLimiter("api:" + key, _ => new FixedWindowRateLimiterOptions
+        {
+            Window = TimeSpan.FromMinutes(1),
+            PermitLimit = testing ? 1000 : 120,
+            QueueLimit = 0,
+            AutoReplenishment = true,
+        });
     });
 });
 
@@ -134,6 +148,13 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         };
         options.Events = new JwtBearerEvents
         {
+            OnTokenValidated = context =>
+            {
+                var typ = context.Principal?.FindFirst("typ")?.Value;
+                if (!string.Equals(typ, "access", StringComparison.Ordinal))
+                    context.Fail("Access token required");
+                return Task.CompletedTask;
+            },
             OnChallenge = async context =>
             {
                 context.HandleResponse();
@@ -156,6 +177,18 @@ if (builder.Environment.IsDevelopment())
     builder.Services.AddEndpointsApiExplorer();
 
 var app = builder.Build();
+
+if (app.Environment.IsProduction())
+{
+    if (settings.JwtAccessSecret.Contains("dev-only", StringComparison.OrdinalIgnoreCase)
+        || settings.JwtRefreshSecret.Contains("dev-only", StringComparison.OrdinalIgnoreCase)
+        || settings.JwtAccessSecret.Length < 32
+        || settings.JwtRefreshSecret.Length < 32
+        || settings.DatabaseUrl.Contains("asan_dev_password", StringComparison.OrdinalIgnoreCase))
+    {
+        throw new InvalidOperationException("Production requires non-default JWT_ACCESS_SECRET, JWT_REFRESH_SECRET, and DATABASE_URL.");
+    }
+}
 
 app.UseMiddleware<RequestIdMiddleware>();
 app.UseMiddleware<ExceptionHandlingMiddleware>();
