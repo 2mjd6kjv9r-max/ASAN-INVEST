@@ -1950,3 +1950,24 @@ body.nav-open {
     transform: none;
   }
 }
+
+.zoning-pin {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--sunken);
+  color: var(--text-2);
+  font-size: 13px;
+}
+
+.zoning-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 99px;
+  background: var(--ink-500);
+  box-shadow: 0 0 0 6px rgba(27, 114, 232, 0.16);
+  flex: none;
+}

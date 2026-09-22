@@ -1,8 +1,10 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { FlagBadge } from '@/components/FlagBadge'
 import { StatusBadge } from '@/components/StatusBadge'
 import { Alert, Button, EmptyState, ErrorState, Field, Input, PageHeader, Select, Skeleton, Textarea } from '@/components/ui'
 import { api, isApiError } from '@/lib/api'
-import type { AnalyticsOverview, CaseDetail, CaseInternalStatus, CaseListItem, EvaluationDto } from '@/lib/types'
+import type { AnalyticsOverview, CaseDetail, CaseInternalStatus, CaseListItem, EvaluationDto, Flag, FlagChangeEvent, Procedure } from '@/lib/types'
+import { pickName } from '@/lib/types'
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
@@ -206,16 +208,106 @@ export function EvaluationsPage() {
 }
 
 export function AdminPage() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const users = useQuery({ queryKey: ['admin-users'], queryFn: api.adminUsers })
   const cms = useQuery({ queryKey: ['admin-cms'], queryFn: api.adminCms })
   const rules = useQuery({ queryKey: ['admin-rules'], queryFn: api.adminRuleSets })
+  const procedures = useQuery({ queryKey: ['admin-procedures'], queryFn: () => api.adminProcedures() as Promise<Procedure[]> })
+  const history = useQuery({ queryKey: ['flag-changes'], queryFn: () => api.flagChanges() as Promise<FlagChangeEvent[]> })
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [role, setRole] = useState('CASE_MANAGER')
+  const [selected, setSelected] = useState<Procedure | null>(null)
+  const [toFlag, setToFlag] = useState<Flag>('ONLINE')
+  const [notify, setNotify] = useState(true)
+  const [flagError, setFlagError] = useState<string | null>(null)
+  const [flagResult, setFlagResult] = useState<string | null>(null)
+
   return (
     <div className="space-y-6">
       <PageHeader title={t('backoffice.admin')} />
+      <section className="card space-y-4">
+        <h2 className="text-lg">{t('phase3.flagEditor')}</h2>
+        <p className="muted">{t('phase3.flagEditorHint')}</p>
+        {flagError ? <Alert tone="error">{flagError}</Alert> : null}
+        {flagResult ? <Alert tone="success">{flagResult}</Alert> : null}
+        <div className="tbl-wrap overflow-x-auto">
+          <table className="tbl">
+            <thead>
+              <tr>
+                <th>Code</th>
+                <th>Name</th>
+                <th>Flag</th>
+              </tr>
+            </thead>
+            <tbody>
+              {procedures.data?.map((row) => (
+                <tr key={row.id} className={selected?.id === row.id ? 'bg-[var(--sunken)]' : undefined}>
+                  <td>
+                    <button type="button" className="btn btn-t px-0" onClick={() => { setSelected(row); setToFlag(row.flag === 'PLANNED' ? 'ONLINE' : row.flag); setFlagResult(null) }}>
+                      {row.code}
+                    </button>
+                  </td>
+                  <td>{pickName(row.names, i18n.language, row.code)}</td>
+                  <td>
+                    <FlagBadge flag={row.flag} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {selected ? (
+          <form
+            className="grid gap-3 sm:grid-cols-3"
+            onSubmit={(e) => {
+              e.preventDefault()
+              setFlagError(null)
+              void api
+                .changeProcedureFlag(selected.id, { from: selected.flag, to: toFlag, notify })
+                .then((res) => {
+                  setFlagResult(t('phase3.flagChanged', { code: selected.code, to: toFlag }))
+                  setSelected({ ...selected, flag: toFlag })
+                  void procedures.refetch()
+                  void history.refetch()
+                  return res
+                })
+                .catch((err) => setFlagError(isApiError(err) ? err.message : t('common.error')))
+            }}
+          >
+            <Field label={t('phase3.fromFlag')}>
+              <Input value={selected.flag} readOnly />
+            </Field>
+            <Field label={t('phase3.toFlag')}>
+              <Select value={toFlag} onChange={(e) => setToFlag(e.target.value as Flag)}>
+                <option value="PLANNED">PLANNED</option>
+                <option value="ONLINE">ONLINE</option>
+                <option value="AUTO">AUTO</option>
+                <option value="PHYSICAL">PHYSICAL</option>
+              </Select>
+            </Field>
+            <label className="ck">
+              <input type="checkbox" checked={notify} onChange={(e) => setNotify(e.target.checked)} />
+              {t('phase3.notifyOwners')}
+            </label>
+            <Button type="submit" className="sm:col-span-3">
+              {selected.flag === 'PLANNED' && toFlag !== 'PLANNED' ? t('phase3.flagConfirm') : t('common.confirm')}
+            </Button>
+          </form>
+        ) : null}
+        {history.data && history.data.length > 0 ? (
+          <ul className="space-y-2 text-sm">
+            {history.data.slice(0, 8).map((row) => (
+              <li key={row.id} className="flex flex-wrap justify-between gap-2">
+                <span>
+                  {row.procedureCode}: {row.fromFlag} → {row.toFlag}
+                </span>
+                <span className="cap">{row.occurredAt}</span>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </section>
       <section className="card">
         <h2 className="text-lg">Users</h2>
         <form

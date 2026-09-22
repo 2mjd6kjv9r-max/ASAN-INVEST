@@ -1,4 +1,5 @@
 import { useAuth } from '@/app/providers'
+import { ProviderChooser } from '@/components/ProviderChooser'
 import { Alert, Button, ButtonLink, Field, Input } from '@/components/ui'
 import { api, isApiError } from '@/lib/api'
 import { useState } from 'react'
@@ -15,7 +16,6 @@ export function LoginPage() {
   const [password, setPassword] = useState('')
   const [challenge, setChallenge] = useState<string | null>(null)
   const [code, setCode] = useState('')
-  const [asan, setAsan] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
 
@@ -66,18 +66,7 @@ export function LoginPage() {
           {t('nav.login')}
         </Button>
       </form>
-      <Button
-        type="button"
-        variant="secondary"
-        className="w-full"
-        onClick={async () => {
-          const data = await api.asanLogin()
-          setAsan(data.message)
-        }}
-      >
-        {t('auth.asan')}
-      </Button>
-      {asan ? <Alert tone="info">{asan}</Alert> : null}
+      {challenge ? null : <ProviderChooser />}
       <p className="text-sm">
         {t('auth.noAccount')} <Link to="/register">{t('nav.register')}</Link>
       </p>
@@ -129,6 +118,7 @@ export function RegisterPage() {
           {t('nav.register')}
         </Button>
       </form>
+      <ProviderChooser />
       <p className="text-sm">
         {t('auth.haveAccount')} <Link to="/login">{t('nav.login')}</Link>
       </p>

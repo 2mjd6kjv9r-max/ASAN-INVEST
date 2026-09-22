@@ -1,6 +1,7 @@
 import { useMutation } from '@tanstack/react-query'
 import { useAuth } from '@/app/providers'
 import { FlagBadge } from '@/components/FlagBadge'
+import { Level2Gate } from '@/components/Level2Gate'
 import { Alert, Button, ButtonLink, Field, Input, PageHeader, Select, Textarea } from '@/components/ui'
 import { api, isApiError } from '@/lib/api'
 import type { Flag, KyaEvaluateResult } from '@/lib/types'
@@ -23,6 +24,7 @@ export function KyaPage() {
   const [pending, setPending] = useState<KyaEvaluateResult | null>(null)
   const [result, setResult] = useState<KyaEvaluateResult | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [needsLevel2, setNeedsLevel2] = useState(false)
 
   const evaluate = useMutation({
     mutationFn: (confirmed: boolean) =>
@@ -51,8 +53,10 @@ export function KyaPage() {
       }) as Promise<KyaEvaluateResult>,
     onSuccess: setResult,
     onError: (err) => {
-      if (isApiError(err) && err.code === 'IDENTIFICATION_LEVEL') setError(t('auth.level2'))
-      else setError(isApiError(err) ? err.message : t('common.error'))
+      if (isApiError(err) && err.code === 'IDENTIFICATION_LEVEL') {
+        setNeedsLevel2(true)
+        setError(t('auth.level2'))
+      } else setError(isApiError(err) ? err.message : t('common.error'))
     },
   })
 
@@ -60,6 +64,7 @@ export function KyaPage() {
     <div className="max-w-3xl space-y-6">
       <PageHeader title={t('kya.title')} subtitle={t('kya.subtitle')} />
       {error ? <Alert tone="error">{error}</Alert> : null}
+      {needsLevel2 ? <Level2Gate user={user} /> : null}
       <form
         className="card space-y-4"
         onSubmit={(e) => {
