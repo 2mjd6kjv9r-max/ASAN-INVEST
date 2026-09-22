@@ -61,7 +61,7 @@ export function KyaPage() {
       <PageHeader title={t('kya.title')} subtitle={t('kya.subtitle')} />
       {error ? <Alert tone="error">{error}</Alert> : null}
       <form
-        className="space-y-4 rounded-sm border border-line bg-white p-5"
+        className="card space-y-4"
         onSubmit={(e) => {
           e.preventDefault()
           evaluate.mutate(!form.description)
@@ -97,9 +97,9 @@ export function KyaPage() {
       </form>
 
       {pending?.needsConfirmation ? (
-        <section className="space-y-3 rounded-sm border border-line bg-white p-5">
+        <section className="card space-y-3">
           <h2 className="text-lg">{t('kya.confirmTitle')}</h2>
-          <pre className="overflow-auto rounded-sm bg-navy-50 p-3 text-xs">{JSON.stringify(pending.extracted, null, 2)}</pre>
+          <pre className="overflow-auto rounded-lg p-3 text-xs" style={{ background: 'var(--sunken)' }}>{JSON.stringify(pending.extracted, null, 2)}</pre>
           <Button type="button" onClick={() => evaluate.mutate(true)}>
             {t('common.confirm')}
           </Button>
@@ -107,10 +107,10 @@ export function KyaPage() {
       ) : null}
 
       {result?.procedures ? (
-        <section className="space-y-3 rounded-sm border border-line bg-white p-5">
+        <section className="card space-y-3">
           <ul className="space-y-3">
             {result.procedures.map((item) => (
-              <li key={item.code} className="flex flex-wrap items-center justify-between gap-2 border-b border-line pb-3">
+              <li key={item.code} className="flex flex-wrap items-center justify-between gap-2 pb-3" style={{ borderBottom: '1px solid var(--line)' }}>
                 <div>
                   <p className="font-semibold">{pickName(item.names, i18n.language, item.code)}</p>
                   <p className="text-sm text-muted">{item.reason}</p>

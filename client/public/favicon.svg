@@ -1,5 +1,15 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
-  <rect width="32" height="32" rx="4" fill="#0B2340"/>
-  <path d="M8 22V10h2.6l4.2 8.4V10H17v12h-2.6L10.2 13.6V22H8Z" fill="#F8FAFC"/>
-  <rect x="20" y="10" width="4" height="12" rx="0.5" fill="#C9A227"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <rect width="100" height="100" rx="18" fill="#1B72E8"/>
+  <g fill="#fff">
+    <ellipse cx="50" cy="21" rx="7" ry="18" transform="rotate(0 50 50)" opacity="1"/>
+    <ellipse cx="50" cy="21" rx="7" ry="18" transform="rotate(45 50 50)" opacity="0.72"/>
+    <ellipse cx="50" cy="21" rx="7" ry="18" transform="rotate(90 50 50)" opacity="1"/>
+    <ellipse cx="50" cy="21" rx="7" ry="18" transform="rotate(135 50 50)" opacity="0.72"/>
+    <ellipse cx="50" cy="21" rx="7" ry="18" transform="rotate(180 50 50)" opacity="1"/>
+    <ellipse cx="50" cy="21" rx="7" ry="18" transform="rotate(225 50 50)" opacity="0.72"/>
+    <ellipse cx="50" cy="21" rx="7" ry="18" transform="rotate(270 50 50)" opacity="1"/>
+    <ellipse cx="50" cy="21" rx="7" ry="18" transform="rotate(315 50 50)" opacity="0.72"/>
+  </g>
+  <circle cx="50" cy="50" r="9" fill="#1B72E8"/>
+  <circle cx="50" cy="50" r="5" fill="#fff"/>
 </svg>

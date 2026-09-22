@@ -45,35 +45,35 @@ export function CaseDeskPage() {
       </div>
       {query.isLoading ? <Skeleton className="h-32" /> : null}
       {query.data?.length === 0 ? <EmptyState title={t('common.empty')} /> : null}
-      <div className="overflow-x-auto rounded-sm border border-line bg-white">
-        <table className="min-w-full text-left text-sm">
+      <div className="tbl-wrap overflow-x-auto">
+        <table className="tbl">
           <caption className="sr-only">{t('backoffice.cases')}</caption>
-          <thead className="bg-navy-50">
+          <thead>
             <tr>
-              <th className="px-3 py-2">Number</th>
-              <th className="px-3 py-2">Internal</th>
-              <th className="px-3 py-2">Investor</th>
-              <th className="px-3 py-2">SLA</th>
-              <th className="px-3 py-2">Manager</th>
+              <th>Number</th>
+              <th>Internal</th>
+              <th>Investor</th>
+              <th>SLA</th>
+              <th>Manager</th>
             </tr>
           </thead>
           <tbody>
             {query.data?.map((row) => (
-              <tr key={row.id} className="border-t border-line">
-                <td className="px-3 py-2">
-                  <Link to={`/backoffice/cases/${row.id}`} className="text-navy">
+              <tr key={row.id}>
+                <td>
+                  <Link to={`/backoffice/cases/${row.id}`}>
                     {row.publicNumber || row.id}
                   </Link>
                 </td>
-                <td className="px-3 py-2">{row.internalStatus}</td>
-                <td className="px-3 py-2">
+                <td>{row.internalStatus}</td>
+                <td>
                   <StatusBadge status={row.investorStatus} />
                 </td>
-                <td className="px-3 py-2">
+                <td>
                   {row.slaState}
                   {row.escalatedAt ? ' · escalated' : ''}
                 </td>
-                <td className="px-3 py-2">{row.caseManager?.email}</td>
+                <td>{row.caseManager?.email}</td>
               </tr>
             ))}
           </tbody>
@@ -109,7 +109,7 @@ export function CaseDetailPage() {
       <PageHeader title={row.application.publicNumber || row.id} subtitle={row.application.type.code} />
       <p className="text-sm">Internal: {row.internalStatus}</p>
       {error ? <Alert tone="error">{error}</Alert> : null}
-      <div className="grid gap-3 rounded-sm border border-line bg-white p-4 md:grid-cols-2">
+      <div className="grid gap-3 card md:grid-cols-2">
         <Field label={t('backoffice.transition')}>
           <Select value={to} onChange={(e) => setTo(e.target.value as CaseInternalStatus)}>
             {STATUSES.map((item) => (
@@ -167,7 +167,7 @@ export function CaseDetailPage() {
         <h2 className="text-lg">Tasks</h2>
         <ul className="text-sm">
           {row.tasks.map((task) => (
-            <li key={task.id} className="flex items-center justify-between border-b border-line py-2">
+            <li key={task.id} className="flex items-center justify-between py-2" style={{ borderBottom: '1px solid var(--line)' }}>
               <span>
                 {task.status} · {task.dueAt}
               </span>
@@ -192,7 +192,7 @@ export function EvaluationsPage() {
       {query.data?.length === 0 ? <EmptyState title={t('common.empty')} /> : null}
       <ul className="space-y-3">
         {query.data?.map((item) => (
-          <li key={item.id} className="rounded-sm border border-line bg-white p-4">
+          <li key={item.id} className="card">
             <p className="text-sm text-muted">{item.route}</p>
             <Textarea value={opinion} onChange={(e) => setOpinion(e.target.value)} />
             <Button className="mt-2" type="button" onClick={() => void api.evaluationOpinion(item.id, opinion).then(() => void query.refetch())}>
@@ -216,7 +216,7 @@ export function AdminPage() {
   return (
     <div className="space-y-6">
       <PageHeader title={t('backoffice.admin')} />
-      <section className="rounded-sm border border-line bg-white p-4">
+      <section className="card">
         <h2 className="text-lg">Users</h2>
         <form
           className="mt-3 grid gap-2 sm:grid-cols-4"
@@ -239,11 +239,11 @@ export function AdminPage() {
         </form>
         <pre className="mt-3 max-h-48 overflow-auto text-xs">{JSON.stringify(users.data, null, 2)}</pre>
       </section>
-      <section className="rounded-sm border border-line bg-white p-4">
+      <section className="card">
         <h2 className="text-lg">CMS</h2>
         <pre className="max-h-48 overflow-auto text-xs">{JSON.stringify(cms.data, null, 2)}</pre>
       </section>
-      <section className="rounded-sm border border-line bg-white p-4">
+      <section className="card">
         <h2 className="text-lg">Rule sets</h2>
         <pre className="max-h-48 overflow-auto text-xs">{JSON.stringify(rules.data, null, 2)}</pre>
       </section>
@@ -260,7 +260,7 @@ export function AnalyticsPage() {
       <PageHeader title={t('backoffice.analytics')} />
       {!data ? <Skeleton className="h-32" /> : null}
       {data ? (
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
           <Stat label="Applications" value={String(data.applications.total)} />
           <Stat label="Submitted" value={String(data.applications.submitted)} />
           <Stat label="KYA" value={String(data.kyaCalculations)} />
@@ -276,9 +276,9 @@ export function AnalyticsPage() {
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-sm border border-line bg-white p-4">
-      <p className="text-sm text-muted">{label}</p>
-      <p className="text-2xl font-semibold text-navy">{value}</p>
+    <div className="card kpi hover-lift">
+      <p className="label">{label}</p>
+      <p className="v">{value}</p>
     </div>
   )
 }
