@@ -1,0 +1,926 @@
+// ASAN Invest Phase 1 schema — TZ §4.3 / docs/PLAN.md §3.
+// Table names are English snake_case; TZ terms stay in comments.
+// Ombudsman / Aftercare extra statuses (TZ §14.2) are not migrated in Phase 1.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// --- Enums from the TZ (PLAN §5.1 item 3) ---
+
+/// TZ §7.2 — 1 Əsas | 2 Hüquqi
+enum IdentificationLevel {
+  BASIC
+  LEGAL
+
+  @@map("identification_level")
+}
+
+/// TZ §1.3 bayraqlar. Code names from AGENTS.md.
+enum Flag {
+  AUTO
+  ONLINE
+  PHYSICAL
+  PLANNED
+
+  @@map("flag")
+}
+
+/// FR-PROJ-08 — Hazırlıq | İcra | İstismar | Dayandırılıb | Bağlanıb
+enum ProjectStatus {
+  PREPARATION
+  EXECUTION
+  OPERATION
+  SUSPENDED
+  CLOSED
+
+  @@map("project_status")
+}
+
+/// TZ §14.1 Standart workflow — daxili status. Phase 2 extra statuses are not listed.
+enum CaseInternalStatus {
+  DRAFT
+  SUBMITTED
+  REGISTERED
+  IN_EVALUATION
+  WAITING_ADDITIONAL_INFO
+  ASSIGNED_FOR_EXECUTION
+  UNDER_REVIEW
+  INTER_AGENCY_COORDINATION
+  RESULT_BEING_PREPARED
+  COMPLETED
+  REJECTED
+  WITHDRAWN
+  ARCHIVED
+
+  @@map("case_internal_status")
+}
+
+/// TZ §14.1 investor-visible mapping (not a second state machine — Z-03).
+enum InvestorVisibleStatus {
+  DRAFT
+  SUBMITTED
+  UNDER_CONSIDERATION
+  WAITING_YOUR_RESPONSE
+  AT_INSTITUTION
+  RESULT_BEING_PREPARED
+  COMPLETED
+  REJECTED
+  WITHDRAWN
+  ARCHIVED
+
+  @@map("investor_visible_status")
+}
+
+/// FR-PROF-04 — baxış | hazırlama | imza
+enum RepresentationAuthority {
+  VIEW
+  PREPARE
+  SIGN
+
+  @@map("representation_authority")
+}
+
+/// TZ §4.3 Sənəd — yüklənib | generasiya
+enum DocumentSource {
+  UPLOADED
+  GENERATED
+
+  @@map("document_source")
+}
+
+/// FR-NOT-02 — portal | email | sms
+enum NotificationChannel {
+  PORTAL
+  EMAIL
+  SMS
+
+  @@map("notification_channel")
+}
+
+/// FR-ADM-07 / Z-06 kinds. Passivity threshold is stored for later Aftercare use; not seeded as behaviour.
+enum RuleSetKind {
+  KYA
+  INCENTIVE
+  RISK
+  ROUTE
+  FLAG
+  CASE_ASSIGNMENT
+  SIZE_THRESHOLD
+  INACTIVITY_THRESHOLD
+
+  @@map("rule_set_kind")
+}
+
+/// TZ §5 — qonaq is unauthenticated and is not stored.
+enum UserRole {
+  INVESTOR
+  CASE_MANAGER
+  SUPERVISOR
+  INSTITUTION_REP
+  EVALUATOR
+  OMBUDSMAN_OFFICER
+  CONTENT_MANAGER
+  ANALYST
+  SYSADMIN
+
+  @@map("user_role")
+}
+
+/// FR-ADM-01
+enum UserStatus {
+  ACTIVE
+  DISABLED
+
+  @@map("user_status")
+}
+
+/// PLAN §3.2 users.auth_provider
+enum AuthProvider {
+  EMAIL
+  ASAN_LOGIN
+
+  @@map("auth_provider")
+}
+
+/// FR-PROJ-05 — kiçik | böyük
+enum ProjectSizeCategory {
+  SMALL
+  LARGE
+
+  @@map("project_size_category")
+}
+
+/// TZ §11 / FR-ADM-03. Phase 1 seeds STANDARD only.
+enum WorkflowKind {
+  STANDARD
+
+  @@map("workflow_kind")
+}
+
+/// FR-ROUTE-01
+enum Currency {
+  AZN
+  USD
+  EUR
+
+  @@map("currency")
+}
+
+/// FR-ADM-02
+enum ClassificationKind {
+  SECTOR
+  ACTIVITY
+  REGION
+  COUNTRY
+  ZONE_PARK
+  INSTITUTION
+  DOCUMENT_TYPE
+
+  @@map("classification_kind")
+}
+
+/// FR-ADM-05 — qaralama → razılaşdırma → dərc → arxiv
+enum CmsStatus {
+  DRAFT
+  IN_REVIEW
+  PUBLISHED
+  ARCHIVED
+
+  @@map("cms_status")
+}
+
+/// TZ §4.3 Ödəniş növü. No in-app acquiring in Phase 1 (TZ §25.1).
+enum PaymentKind {
+  STATE_FEE
+  PARTNER_SERVICE
+
+  @@map("payment_kind")
+}
+
+/// FR-APP-06
+enum ApplicationSource {
+  PASSPORT_STAGE
+  OPPORTUNITY_CARD
+  NEW_APPLICATION
+
+  @@map("application_source")
+}
+
+/// Document M:N targets (TZ §4.3 Sənəd).
+enum DocumentLinkObject {
+  PROFILE
+  PROJECT
+  APPLICATION
+
+  @@map("document_link_object")
+}
+
+// --- §4.3 objects ---
+
+/// İstifadəçi — owner: Giriş və profil
+model User {
+  id                   String               @id @default(uuid()) @db.Uuid
+  email                String               @unique @db.Citext
+  passwordHash         String?              @map("password_hash")
+  identificationLevel  IdentificationLevel  @default(BASIC) @map("identification_level")
+  locale               String               @default("az") @db.VarChar(8)
+  consents             Json                 @default("{}")
+  consentVersion       String?              @map("consent_version")
+  consentedAt          DateTime?            @map("consented_at") @db.Timestamptz(6)
+  authProvider         AuthProvider         @default(EMAIL) @map("auth_provider")
+  emailVerifiedAt      DateTime?            @map("email_verified_at") @db.Timestamptz(6)
+  twoFactorEnabled     Boolean              @default(false) @map("two_factor_enabled")
+  twoFactorSecret      String?              @map("two_factor_secret")
+  status               UserStatus           @default(ACTIVE)
+  institutionId        String?              @map("institution_id") @db.Uuid
+  /// FR-EVAL-01 — automatic PEP/sanctions result stored once on the user.
+  pepSanctionsStatus   String?              @map("pep_sanctions_status")
+  pepSanctionsCheckedAt DateTime?           @map("pep_sanctions_checked_at") @db.Timestamptz(6)
+  pepSanctionsListVersion String?           @map("pep_sanctions_list_version")
+  createdAt            DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  institution            Classification?       @relation("InstitutionUsers", fields: [institutionId], references: [id], onDelete: SetNull)
+  profile                Profile?
+  roleAssignments        UserRoleAssignment[]
+  grantedRoles           UserRoleAssignment[]  @relation("RoleGrantedBy")
+  representationsHeld    Representation[]      @relation("RepresentativeUser")
+  managedProjects        Project[]             @relation("ProjectCaseManager")
+  createdProjects        Project[]             @relation("ProjectCreator")
+  assignedCases          Case[]                @relation("CaseManager")
+  reopenedCases          Case[]                @relation("CaseReopenedBy")
+  assignedTasks          Task[]                @relation("TaskAssignee")
+  evaluationsAsSubject   Evaluation[]          @relation("EvaluationSubject")
+  evaluationsAsEvaluator Evaluation[]          @relation("Evaluator")
+  sentMessages           Message[]
+  notifications          Notification[]
+  approvedRuleSets       RuleSet[]             @relation("RuleSetApprover")
+  auditRecords           AuditRecord[]
+  cmsOwned               CmsContent[]
+  guestSessionsConverted GuestSession[]
+
+  @@index([institutionId])
+  @@index([status])
+  @@map("users")
+}
+
+/// FR-ADM-01 role assignment with validity window. Implements users.roles[].
+model UserRoleAssignment {
+  id          String    @id @default(uuid()) @db.Uuid
+  userId      String    @map("user_id") @db.Uuid
+  role        UserRole
+  validFrom   DateTime  @default(now()) @map("valid_from") @db.Timestamptz(6)
+  validTo     DateTime? @map("valid_to") @db.Timestamptz(6)
+  grantedById String?   @map("granted_by") @db.Uuid
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user      User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  grantedBy User? @relation("RoleGrantedBy", fields: [grantedById], references: [id], onDelete: SetNull)
+
+  @@index([userId, role])
+  @@map("user_roles")
+}
+
+/// Profil — owner: Giriş və profil
+model Profile {
+  id              String   @id @default(uuid()) @db.Uuid
+  userId          String   @unique @map("user_id") @db.Uuid
+  countryId       String?  @map("country_id") @db.Uuid
+  sectorId        String?  @map("sector_id") @db.Uuid
+  activityAreaId  String?  @map("activity_area_id") @db.Uuid
+  contacts        Json     @default("{}")
+  companyName     String?  @map("company_name")
+  companyCountryId String? @map("company_country_id") @db.Uuid
+  companyRegId    String?  @map("company_reg_id")
+  taxId           String?  @map("tax_id")
+  companyActivity String?  @map("company_activity")
+  uboStructure    Json?    @map("ubo_structure")
+  version         Int      @default(1)
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  country        Classification?   @relation("ProfileCountry", fields: [countryId], references: [id], onDelete: SetNull)
+  sector         Classification?   @relation("ProfileSector", fields: [sectorId], references: [id], onDelete: SetNull)
+  activityArea   Classification?   @relation("ProfileActivity", fields: [activityAreaId], references: [id], onDelete: SetNull)
+  companyCountry Classification?   @relation("ProfileCompanyCountry", fields: [companyCountryId], references: [id], onDelete: SetNull)
+  versions       ProfileVersion[]
+  representations Representation[]
+  projects       Project[]
+  kyaResults     KyaResult[]
+  applications   Application[]
+
+  @@map("profiles")
+}
+
+/// FR-PROF-02 version history
+model ProfileVersion {
+  id        String   @id @default(uuid()) @db.Uuid
+  profileId String   @map("profile_id") @db.Uuid
+  version   Int
+  snapshot  Json
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@unique([profileId, version])
+  @@map("profile_versions")
+}
+
+/// Nümayəndəlik — owner: Giriş və profil
+model Representation {
+  id                       String                   @id @default(uuid()) @db.Uuid
+  profileId                String                   @map("profile_id") @db.Uuid
+  representativeUserId     String                   @map("representative_user_id") @db.Uuid
+  authority                RepresentationAuthority
+  powerOfAttorneyDocumentId String?                 @map("power_of_attorney_document_id") @db.Uuid
+  validFrom                DateTime                 @map("valid_from") @db.Timestamptz(6)
+  validTo                  DateTime?                @map("valid_to") @db.Timestamptz(6)
+  revokedAt                DateTime?                @map("revoked_at") @db.Timestamptz(6)
+  createdAt                DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  profile            Profile   @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  representativeUser User      @relation("RepresentativeUser", fields: [representativeUserId], references: [id], onDelete: Restrict)
+  powerOfAttorney    Document? @relation("RepresentationPoA", fields: [powerOfAttorneyDocumentId], references: [id], onDelete: SetNull)
+
+  @@index([profileId])
+  @@index([representativeUserId])
+  @@map("representations")
+}
+
+/// Layihə — owner: Layihə pasportu
+model Project {
+  id                   String              @id @default(uuid()) @db.Uuid
+  profileId            String              @map("profile_id") @db.Uuid
+  name                 String
+  sectorId             String?             @map("sector_id") @db.Uuid
+  territoryId          String?             @map("territory_id") @db.Uuid
+  volumeAmount         Decimal             @map("volume_amount") @db.Decimal(18, 2)
+  volumeCurrency       Currency            @map("volume_currency")
+  sizeCategory         ProjectSizeCategory @map("size_category")
+  companyRef           String?             @map("company_ref")
+  permanentCaseManagerId String?           @map("permanent_case_manager_id") @db.Uuid
+  createdById          String              @map("created_by") @db.Uuid
+  /// FR-PROJ-08. SUSPENDED / CLOSED are investor-set; others may be derived by the backend.
+  status               ProjectStatus       @default(PREPARATION)
+  createdAt            DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  profile                Profile         @relation(fields: [profileId], references: [id], onDelete: Restrict)
+  sector                 Classification? @relation("ProjectSector", fields: [sectorId], references: [id], onDelete: SetNull)
+  territory              Classification? @relation("ProjectTerritory", fields: [territoryId], references: [id], onDelete: SetNull)
+  permanentCaseManager   User?           @relation("ProjectCaseManager", fields: [permanentCaseManagerId], references: [id], onDelete: SetNull)
+  createdBy              User            @relation("ProjectCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  stages                 Stage[]
+  applications           Application[]
+  kyaResults             KyaResult[]
+  payments               Payment[]
+
+  @@index([profileId])
+  @@index([status])
+  @@index([permanentCaseManagerId])
+  @@map("projects")
+}
+
+/// Mərhələ — owner: Layihə pasportu.
+/// Status is NOT stored (Z-03 / TZ §10.2): derive it from the linked case.
+model Stage {
+  id                 String    @id @default(uuid()) @db.Uuid
+  projectId          String    @map("project_id") @db.Uuid
+  procedureId        String    @map("procedure_id") @db.Uuid
+  flag               Flag
+  sortOrder          Int       @map("sort_order")
+  expectedDurationDays Int?    @map("expected_duration_days")
+  actualStartedAt    DateTime? @map("actual_started_at") @db.Timestamptz(6)
+  actualCompletedAt  DateTime? @map("actual_completed_at") @db.Timestamptz(6)
+  applicationId      String?   @unique @map("application_id") @db.Uuid
+  /// FR-PROJ-02 — unused after KYA recalculation becomes «Tətbiq edilmir».
+  isNotApplicable    Boolean   @default(false) @map("is_not_applicable")
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  procedure   Procedure    @relation(fields: [procedureId], references: [id], onDelete: Restrict)
+  application Application? @relation(fields: [applicationId], references: [id], onDelete: SetNull)
+
+  @@index([projectId, sortOrder])
+  @@map("stages")
+}
+
+/// KYA nəticəsi — owner: KYA. Bound to the rule version that produced it (Z-05).
+model KyaResult {
+  id               String   @id @default(uuid()) @db.Uuid
+  profileId        String   @map("profile_id") @db.Uuid
+  projectId        String?  @map("project_id") @db.Uuid
+  inputParameters  Json     @map("input_parameters")
+  procedures       Json
+  ruleSetId        String   @map("rule_set_id") @db.Uuid
+  ruleVersion      String   @map("rule_version")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  profile  Profile  @relation(fields: [profileId], references: [id], onDelete: Restrict)
+  project  Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  ruleSet  RuleSet  @relation(fields: [ruleSetId], references: [id], onDelete: Restrict)
+
+  @@index([profileId])
+  @@index([projectId])
+  @@index([ruleSetId])
+  @@map("kya_results")
+}
+
+/// Müraciət — owner: Vahid Müraciət
+/// investor_status is not stored (Z-03): map from cases.internal_status via workflow_statuses.
+model Application {
+  id              String            @id @default(uuid()) @db.Uuid
+  publicNumber    String?           @unique @map("public_number")
+  typeId          String            @map("type_id") @db.Uuid
+  workflow        WorkflowKind      @default(STANDARD)
+  /// FR-APP-04 — immutable after submit (enforced by trigger).
+  snapshot        Json?
+  projectId       String?           @map("project_id") @db.Uuid
+  profileId       String?           @map("profile_id") @db.Uuid
+  source          ApplicationSource @default(NEW_APPLICATION)
+  withdrawnAt     DateTime?         @map("withdrawn_at") @db.Timestamptz(6)
+  withdrawalReason String?          @map("withdrawal_reason")
+  submittedAt     DateTime?         @map("submitted_at") @db.Timestamptz(6)
+  createdAt       DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  type     ApplicationType @relation(fields: [typeId], references: [id], onDelete: Restrict)
+  project  Project?        @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  profile  Profile?        @relation(fields: [profileId], references: [id], onDelete: Restrict)
+  case     Case?
+  stage    Stage?
+  messages Message[]
+  payments Payment[]
+
+  @@index([profileId, createdAt])
+  @@index([projectId, createdAt])
+  @@index([typeId])
+  @@map("applications")
+}
+
+/// Case — owner: Case Management. Single stored status source (Z-03).
+model Case {
+  id               String             @id @default(uuid()) @db.Uuid
+  applicationId    String             @unique @map("application_id") @db.Uuid
+  internalStatus   CaseInternalStatus @default(REGISTERED) @map("internal_status")
+  caseManagerId    String?            @map("case_manager_id") @db.Uuid
+  slaDueAt         DateTime?          @map("sla_due_at") @db.Timestamptz(6)
+  registeredAt     DateTime           @default(now()) @map("registered_at") @db.Timestamptz(6)
+  closedAt         DateTime?          @map("closed_at") @db.Timestamptz(6)
+  pausedAt         DateTime?          @map("paused_at") @db.Timestamptz(6)
+  escalatedAt      DateTime?          @map("escalated_at") @db.Timestamptz(6)
+  finalResult      Json?              @map("final_result")
+  sectorId         String?            @map("sector_id") @db.Uuid
+  regionId         String?            @map("region_id") @db.Uuid
+  institutionId    String?            @map("institution_id") @db.Uuid
+  reopenedAt       DateTime?          @map("reopened_at") @db.Timestamptz(6)
+  reopenedById     String?            @map("reopened_by") @db.Uuid
+  reopenReason     String?            @map("reopen_reason")
+  createdAt        DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  application Application     @relation(fields: [applicationId], references: [id], onDelete: Restrict)
+  caseManager User?           @relation("CaseManager", fields: [caseManagerId], references: [id], onDelete: SetNull)
+  reopenedBy  User?           @relation("CaseReopenedBy", fields: [reopenedById], references: [id], onDelete: SetNull)
+  sector      Classification? @relation("CaseSector", fields: [sectorId], references: [id], onDelete: SetNull)
+  region      Classification? @relation("CaseRegion", fields: [regionId], references: [id], onDelete: SetNull)
+  institution Classification? @relation("CaseInstitution", fields: [institutionId], references: [id], onDelete: SetNull)
+  tasks       Task[]
+  evaluations Evaluation[]
+
+  @@index([caseManagerId, internalStatus, slaDueAt])
+  @@index([internalStatus, slaDueAt])
+  @@index([institutionId])
+  @@map("cases")
+}
+
+/// Tapşırıq — owner: Case Management
+model Task {
+  id             String    @id @default(uuid()) @db.Uuid
+  caseId         String    @map("case_id") @db.Uuid
+  institutionId  String    @map("institution_id") @db.Uuid
+  assigneeUserId String?   @map("assignee_user_id") @db.Uuid
+  dueAt          DateTime  @map("due_at") @db.Timestamptz(6)
+  status         String
+  opinion        String?
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  case        Case           @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  institution Classification @relation("TaskInstitution", fields: [institutionId], references: [id], onDelete: Restrict)
+  assignee    User?          @relation("TaskAssignee", fields: [assigneeUserId], references: [id], onDelete: SetNull)
+  documents   TaskDocument[]
+
+  @@index([institutionId, dueAt])
+  @@index([assigneeUserId, dueAt])
+  @@index([caseId, status])
+  @@map("tasks")
+}
+
+model TaskDocument {
+  taskId     String @map("task_id") @db.Uuid
+  documentId String @map("document_id") @db.Uuid
+
+  task     Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@id([taskId, documentId])
+  @@map("task_documents")
+}
+
+/// Qiymətləndirmə — owner: İlkin qiymətləndirmə
+model Evaluation {
+  id            String    @id @default(uuid()) @db.Uuid
+  caseId        String    @map("case_id") @db.Uuid
+  userId        String    @map("user_id") @db.Uuid
+  route         String
+  evaluatorId   String?   @map("evaluator_id") @db.Uuid
+  opinion       String?
+  criteriaUsed  Json?     @map("criteria_used")
+  listVersion   String?   @map("list_version")
+  startedAt     DateTime? @map("started_at") @db.Timestamptz(6)
+  dueAt         DateTime? @map("due_at") @db.Timestamptz(6)
+  status        String    @default("pending")
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  case      Case @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  subject   User @relation("EvaluationSubject", fields: [userId], references: [id], onDelete: Restrict)
+  evaluator User? @relation("Evaluator", fields: [evaluatorId], references: [id], onDelete: SetNull)
+
+  @@index([caseId])
+  @@index([evaluatorId, status])
+  @@index([userId])
+  @@map("evaluations")
+}
+
+/// Sənəd — owner: Sənəd servisi
+model Document {
+  id         String         @id @default(uuid()) @db.Uuid
+  typeId     String         @map("type_id") @db.Uuid
+  version    Int            @default(1)
+  validUntil DateTime?      @map("valid_until") @db.Timestamptz(6)
+  source     DocumentSource
+  storageKey String         @map("storage_key")
+  originalName String?      @map("original_name")
+  mimeType   String?        @map("mime_type")
+  createdAt  DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  type              Classification      @relation("DocumentType", fields: [typeId], references: [id], onDelete: Restrict)
+  links             DocumentLink[]
+  taskLinks         TaskDocument[]
+  messageLinks      MessageAttachment[]
+  representationPoa Representation[]    @relation("RepresentationPoA")
+  paymentReceipts   Payment[]
+
+  @@index([typeId])
+  @@index([validUntil])
+  @@map("documents")
+}
+
+model DocumentLink {
+  id         String             @id @default(uuid()) @db.Uuid
+  documentId String             @map("document_id") @db.Uuid
+  objectType DocumentLinkObject @map("object_type")
+  objectId   String             @map("object_id") @db.Uuid
+  createdAt  DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, objectType, objectId])
+  @@index([objectType, objectId])
+  @@map("document_links")
+}
+
+/// Mesaj — owner: Kabinet — Mesajlar
+model Message {
+  id            String   @id @default(uuid()) @db.Uuid
+  applicationId String   @map("application_id") @db.Uuid
+  senderUserId  String   @map("sender_user_id") @db.Uuid
+  body          String
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// GİR-03 — internal notes/correspondence must never be returned on investor DTOs.
+  isInternal    Boolean  @default(false) @map("is_internal")
+
+  application Application         @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  sender      User                @relation(fields: [senderUserId], references: [id], onDelete: Restrict)
+  attachments MessageAttachment[]
+
+  @@index([applicationId, createdAt])
+  @@map("messages")
+}
+
+model MessageAttachment {
+  messageId  String @map("message_id") @db.Uuid
+  documentId String @map("document_id") @db.Uuid
+
+  message  Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@id([messageId, documentId])
+  @@map("message_attachments")
+}
+
+/// Bildiriş — owner: Bildirişlər. FR-NOT-06: body must not contain PII.
+model Notification {
+  id             String              @id @default(uuid()) @db.Uuid
+  userId         String              @map("user_id") @db.Uuid
+  eventType      String              @map("event_type")
+  channel        NotificationChannel
+  deliveryResult String              @default("pending") @map("delivery_result")
+  readAt         DateTime?           @map("read_at") @db.Timestamptz(6)
+  body           String
+  payload        Json                @default("{}")
+  createdAt      DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("notifications")
+}
+
+/// Qayda dəsti — owner: İnzibatçılıq (Z-05, Z-06, FR-ADM-07)
+model RuleSet {
+  id          String       @id @default(uuid()) @db.Uuid
+  kind        RuleSetKind
+  version     String
+  effectiveAt DateTime     @map("effective_at") @db.Timestamptz(6)
+  approvedById String?     @map("approved_by") @db.Uuid
+  body        Json
+  createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  approvedBy User?       @relation("RuleSetApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  kyaResults KyaResult[]
+
+  @@unique([kind, version])
+  @@index([kind, effectiveAt])
+  @@map("rule_sets")
+}
+
+/// Ödəniş — TZ §4.3 object. No payment processing in Phase 1 (TZ §25.1).
+model Payment {
+  id                 String      @id @default(uuid()) @db.Uuid
+  kind               PaymentKind
+  amount             Decimal     @db.Decimal(18, 2)
+  currency           Currency
+  status             String      @default("external")
+  receiptDocumentId  String?     @map("receipt_document_id") @db.Uuid
+  projectId          String?     @map("project_id") @db.Uuid
+  applicationId      String?     @map("application_id") @db.Uuid
+  createdAt          DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  receipt     Document?    @relation(fields: [receiptDocumentId], references: [id], onDelete: SetNull)
+  project     Project?     @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  application Application? @relation(fields: [applicationId], references: [id], onDelete: Restrict)
+
+  @@index([projectId])
+  @@index([applicationId])
+  @@map("payments")
+}
+
+/// Audit qeydi — owner: Audit servisi. Append-only (TZ §21.1).
+model AuditRecord {
+  id          String   @id @default(uuid()) @db.Uuid
+  actorUserId String?  @map("actor_user_id") @db.Uuid
+  action      String
+  occurredAt  DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
+  before      Json?
+  after       Json?
+  objectType  String   @map("object_type")
+  objectId    String   @map("object_id")
+
+  actor User? @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([objectType, objectId, occurredAt])
+  @@index([actorUserId, occurredAt])
+  @@map("audit_records")
+}
+
+// --- PLAN §3.3 supporting configuration ---
+
+/// FR-ADM-02
+model Classification {
+  id        String             @id @default(uuid()) @db.Uuid
+  kind      ClassificationKind
+  code      String
+  names     Json
+  parentId  String?            @map("parent_id") @db.Uuid
+  isActive  Boolean            @default(true) @map("is_active")
+  sortOrder Int                @default(0) @map("sort_order")
+  createdAt DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  parent                   Classification?  @relation("ClassificationTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children                 Classification[] @relation("ClassificationTree")
+  institutionUsers         User[]           @relation("InstitutionUsers")
+  profileCountries         Profile[]        @relation("ProfileCountry")
+  profileSectors           Profile[]        @relation("ProfileSector")
+  profileActivities        Profile[]        @relation("ProfileActivity")
+  profileCompanyCountries  Profile[]        @relation("ProfileCompanyCountry")
+  projectSectors           Project[]        @relation("ProjectSector")
+  projectTerritories       Project[]        @relation("ProjectTerritory")
+  caseSectors              Case[]           @relation("CaseSector")
+  caseRegions              Case[]           @relation("CaseRegion")
+  caseInstitutions         Case[]           @relation("CaseInstitution")
+  taskInstitutions         Task[]           @relation("TaskInstitution")
+  documents                Document[]       @relation("DocumentType")
+  procedures               Procedure[]
+  procedureDocuments       ProcedureDocument[]
+  applicationTypeDocuments ApplicationTypeDocument[]
+
+  @@unique([kind, code])
+  @@index([kind, isActive, sortOrder])
+  @@map("classifications")
+}
+
+/// FR-ADM-08 prosedur kataloqu
+model Procedure {
+  id                      String    @id @default(uuid()) @db.Uuid
+  code                    String    @unique
+  names                   Json
+  institutionId           String    @map("institution_id") @db.Uuid
+  flag                    Flag
+  expectedDurationDays    Int?      @map("expected_duration_days")
+  feeAmount               Decimal?  @map("fee_amount") @db.Decimal(18, 2)
+  feeCurrency             Currency? @map("fee_currency")
+  legalBasis              String?   @map("legal_basis")
+  eServiceUrl             String?   @map("e_service_url")
+  applicationTypeId       String?   @map("application_type_id") @db.Uuid
+  sortOrder               Int       @default(0) @map("sort_order")
+  isActive                Boolean   @default(true) @map("is_active")
+  createdAt               DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt               DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  institution     Classification       @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+  applicationType ApplicationType?     @relation(fields: [applicationTypeId], references: [id], onDelete: SetNull)
+  stages          Stage[]
+  documents       ProcedureDocument[]
+  dependencies    ProcedureDependency[] @relation("ProcedureDepends")
+  dependents      ProcedureDependency[] @relation("ProcedureDependedOn")
+
+  @@index([institutionId])
+  @@index([flag])
+  @@map("procedures")
+}
+
+model ProcedureDocument {
+  procedureId        String @map("procedure_id") @db.Uuid
+  documentTypeId     String @map("document_type_id") @db.Uuid
+
+  procedure    Procedure      @relation(fields: [procedureId], references: [id], onDelete: Cascade)
+  documentType Classification @relation(fields: [documentTypeId], references: [id], onDelete: Restrict)
+
+  @@id([procedureId, documentTypeId])
+  @@map("procedure_documents")
+}
+
+model ProcedureDependency {
+  procedureId          String @map("procedure_id") @db.Uuid
+  dependsOnProcedureId String @map("depends_on_procedure_id") @db.Uuid
+
+  procedure Procedure @relation("ProcedureDepends", fields: [procedureId], references: [id], onDelete: Cascade)
+  dependsOn Procedure @relation("ProcedureDependedOn", fields: [dependsOnProcedureId], references: [id], onDelete: Restrict)
+
+  @@id([procedureId, dependsOnProcedureId])
+  @@map("procedure_dependencies")
+}
+
+/// FR-ADM-03
+model ApplicationType {
+  id                    String              @id @default(uuid()) @db.Uuid
+  code                  String              @unique
+  names                 Json
+  workflow              WorkflowKind        @default(STANDARD)
+  identificationLevel   IdentificationLevel @map("identification_level")
+  requiresEvaluation    Boolean             @default(false) @map("requires_evaluation")
+  formSchema            Json                @default("{}") @map("form_schema")
+  isActive              Boolean             @default(true) @map("is_active")
+  createdAt             DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  applications Application[]
+  procedures   Procedure[]
+  documents    ApplicationTypeDocument[]
+
+  @@map("application_types")
+}
+
+model ApplicationTypeDocument {
+  applicationTypeId String @map("application_type_id") @db.Uuid
+  documentTypeId    String @map("document_type_id") @db.Uuid
+  required          Boolean @default(true)
+
+  applicationType ApplicationType @relation(fields: [applicationTypeId], references: [id], onDelete: Cascade)
+  documentType    Classification  @relation(fields: [documentTypeId], references: [id], onDelete: Restrict)
+
+  @@id([applicationTypeId, documentTypeId])
+  @@map("application_type_documents")
+}
+
+/// Standart workflow statuses (TZ §14.1). Do not seed TZ §14.2 here.
+model WorkflowStatus {
+  id                     String                @id @default(uuid()) @db.Uuid
+  workflow               WorkflowKind          @default(STANDARD)
+  internalStatus         CaseInternalStatus    @map("internal_status")
+  investorVisibleStatus  InvestorVisibleStatus @map("investor_visible_status")
+  sortOrder              Int                   @map("sort_order")
+  slaWorkingDays         Int?                  @map("sla_working_days")
+  pauseSlaOnThisStatus   Boolean               @default(false) @map("pause_sla_on_this_status")
+  isTerminal             Boolean               @default(false) @map("is_terminal")
+  /// Phase 2 (TZ §14.2): Ombudsman — UNDER_INVESTIGATION, IN_MEDIATION, OPINION_PREPARED, OPINION_PENDING_APPROVAL; Aftercare — NEXT_CONTACT_PLANNED, IN_MONITORING.
+
+  @@unique([workflow, internalStatus])
+  @@map("workflow_statuses")
+}
+
+model WorkflowTransition {
+  id            String             @id @default(uuid()) @db.Uuid
+  workflow      WorkflowKind       @default(STANDARD)
+  fromStatus    CaseInternalStatus @map("from_status")
+  toStatus      CaseInternalStatus @map("to_status")
+  requiredRole  UserRole?          @map("required_role")
+  requiresReason Boolean           @default(false) @map("requires_reason")
+
+  @@unique([workflow, fromStatus, toStatus])
+  @@map("workflow_transitions")
+}
+
+/// FR-ADM-05 / FR-ADM-06 CMS
+model CmsContent {
+  id           String    @id @default(uuid()) @db.Uuid
+  pageKey      String    @map("page_key")
+  slug         String    @unique
+  title        Json
+  body         Json
+  status       CmsStatus @default(DRAFT)
+  ownerUserId  String?   @map("owner_user_id") @db.Uuid
+  effectiveAt  DateTime? @map("effective_at") @db.Timestamptz(6)
+  publishedAt  DateTime? @map("published_at") @db.Timestamptz(6)
+  scheduledAt  DateTime? @map("scheduled_at") @db.Timestamptz(6)
+  version      Int       @default(1)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  owner    User?              @relation(fields: [ownerUserId], references: [id], onDelete: SetNull)
+  versions CmsContentVersion[]
+
+  @@index([pageKey, status])
+  @@map("cms_content")
+}
+
+model CmsContentVersion {
+  id        String    @id @default(uuid()) @db.Uuid
+  contentId String    @map("content_id") @db.Uuid
+  version   Int
+  title     Json
+  body      Json
+  status    CmsStatus
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  content CmsContent @relation(fields: [contentId], references: [id], onDelete: Cascade)
+
+  @@unique([contentId, version])
+  @@map("cms_content_versions")
+}
+
+/// FR-ADM-09 / FR-NOT-02
+model NotificationTemplate {
+  id          String              @id @default(uuid()) @db.Uuid
+  eventType   String              @map("event_type")
+  role        UserRole?
+  locale      String              @db.VarChar(8)
+  channel     NotificationChannel
+  subject     String
+  body        String
+  isMandatory Boolean             @default(false) @map("is_mandatory")
+  createdAt   DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([eventType, role, locale, channel])
+  @@map("notification_templates")
+}
+
+/// FR-AUTH-04 / FR-ROUTE-05 guest answers before register
+model GuestSession {
+  id              String    @id @default(uuid()) @db.Uuid
+  email           String?   @db.Citext
+  answers         Json      @default("{}")
+  locale          String    @default("az") @db.VarChar(8)
+  convertedUserId String?   @map("converted_user_id") @db.Uuid
+  expiresAt       DateTime  @map("expires_at") @db.Timestamptz(6)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  convertedUser User? @relation(fields: [convertedUserId], references: [id], onDelete: SetNull)
+
+  @@index([email])
+  @@index([expiresAt])
+  @@map("guest_sessions")
+}
