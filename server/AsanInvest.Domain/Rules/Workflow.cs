@@ -223,6 +223,48 @@ public static class Phase3Integrity
     public static bool MayGrantEResidency(bool legislationEnabled, EResidencyStatus current) =>
         legislationEnabled && current is EResidencyStatus.APPLIED or EResidencyStatus.PLAN_PENDING;
 
+    /// Postgres CHECK requires OUTBOUND/INBOUND. Lowercase values become 409 via DbUpdateException.
+    public static string IntegrationDirection(string? value) =>
+        string.Equals(value, "inbound", StringComparison.OrdinalIgnoreCase) ? "INBOUND" : "OUTBOUND";
+
+    public static IReadOnlyList<(string Path, string Message)> MissingRequiredFields(string? formSchema, JsonElement answers)
+    {
+        var missing = new List<(string Path, string Message)>();
+        try
+        {
+            using var schema = JsonDocument.Parse(string.IsNullOrWhiteSpace(formSchema) ? "{}" : formSchema);
+            if (!schema.RootElement.TryGetProperty("fields", out var fields) || fields.ValueKind != JsonValueKind.Array)
+                return missing;
+            var answersEl = FlattenAnswers(answers);
+            foreach (var field in fields.EnumerateArray())
+            {
+                var required = field.TryGetProperty("required", out var req) && req.ValueKind == JsonValueKind.True;
+                var name = field.TryGetProperty("name", out var n) ? n.GetString() : null;
+                if (!required || name is null) continue;
+                var missingField = !answersEl.TryGetProperty(name, out var val)
+                    || val.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined
+                    || (val.ValueKind == JsonValueKind.String && val.GetString() == "");
+                if (missingField) missing.Add((name, "This field is required"));
+            }
+        }
+        catch (JsonException)
+        {
+            // unparseable form schema is treated as valid
+        }
+        return missing;
+    }
+
+    private static JsonElement FlattenAnswers(JsonElement answers)
+    {
+        if (answers.ValueKind == JsonValueKind.Object
+            && answers.TryGetProperty("answers", out var inner)
+            && inner.ValueKind == JsonValueKind.Object)
+            return inner;
+        return answers.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null
+            ? JsonSerializer.SerializeToElement(new { })
+            : answers;
+    }
+
     public static bool HasKycContent(JsonElement packet)
     {
         if (packet.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null) return false;

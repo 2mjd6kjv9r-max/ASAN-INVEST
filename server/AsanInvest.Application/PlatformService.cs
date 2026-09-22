@@ -445,32 +445,8 @@ public sealed class PlatformService
         var row = await _db.Applications.Include(a => a.Type).Include(a => a.Project).FirstOrDefaultAsync(a => a.Id == id, ct)
             ?? throw AppException.NotFound("Application not found");
         if (row.ProfileId != profile.Id && row.Project?.ProfileId != profile.Id) throw AppException.NotFound("Application not found");
-        var answers = row.Snapshot is not null ? SnapshotAnswers(row.Snapshot) : JsonSerializer.Deserialize<object>((await ReadDraft(profile.Id, row.Id, ct)).GetRawText());
-        var missing = new List<object>();
-        try
-        {
-            using var schema = JsonDocument.Parse(string.IsNullOrWhiteSpace(row.Type.FormSchema) ? "{}" : row.Type.FormSchema);
-            if (schema.RootElement.TryGetProperty("fields", out var fields) && fields.ValueKind == JsonValueKind.Array)
-            {
-                var answersEl = JsonSerializer.SerializeToElement(answers ?? new { });
-                foreach (var field in fields.EnumerateArray())
-                {
-                    var required = field.TryGetProperty("required", out var req) && req.ValueKind == JsonValueKind.True;
-                    var name = field.TryGetProperty("name", out var n) ? n.GetString() : null;
-                    if (!required || name is null) continue;
-                    var missingField = !answersEl.TryGetProperty(name, out var val)
-                        || val.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined
-                        || (val.ValueKind == JsonValueKind.String && val.GetString() == "");
-                    if (missingField) missing.Add(new { path = name, message = "This field is required" });
-                }
-            }
-        }
-        catch (JsonException)
-        {
-            // unparseable form schema is treated as valid
-        }
-        if (missing.Count > 0)
-            throw AppException.BadRequest("VALIDATION_ERROR", "Complete the required fields before submit", missing);
+        var answers = await AnswersForValidationAsync(row, profile.Id, ct);
+        ThrowIfMissingRequired(row.Type.FormSchema, answers);
         return new { valid = true };
     }
 
@@ -483,6 +459,7 @@ public sealed class PlatformService
         if (row.Snapshot is not null) throw AppException.Conflict("Application already submitted", "ALREADY_SUBMITTED");
         if (row.Type.IdentificationLevel == IdentificationLevel.LEGAL && user.IdentificationLevel != IdentificationLevel.LEGAL)
             throw new AppException(403, "IDENTIFICATION_LEVEL", "This action needs a legal identification level. Continue via e-signature or a representative on your Route screen.", new { current = user.IdentificationLevel, required = IdentificationLevel.LEGAL, next = "route" });
+        ThrowIfMissingRequired(row.Type.FormSchema, await AnswersForValidationAsync(row, profile.Id, ct));
         var publicNumber = await _db.NextApplicationPublicNumberAsync(ct);
         var needsEval = row.Type.RequiresEvaluation;
         var status = needsEval ? CaseInternalStatus.IN_EVALUATION : CaseInternalStatus.REGISTERED;
@@ -1078,6 +1055,32 @@ public sealed class PlatformService
         contacts[key] = JsonSerializer.SerializeToElement(list);
         profile.Contacts = JsonSerializer.Serialize(contacts);
         await _db.SaveChangesAsync(ct);
+    }
+
+    private async Task<JsonElement> AnswersForValidationAsync(ApplicationEntity row, Guid profileId, CancellationToken ct)
+    {
+        if (row.Snapshot is not null)
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(row.Snapshot);
+                return doc.RootElement.Clone();
+            }
+            catch (JsonException)
+            {
+                return JsonSerializer.SerializeToElement(new { });
+            }
+        }
+        return await ReadDraft(profileId, row.Id, ct);
+    }
+
+    private static void ThrowIfMissingRequired(string? formSchema, JsonElement answers)
+    {
+        var missing = Phase3Integrity.MissingRequiredFields(formSchema, answers)
+            .Select(m => new { path = m.Path, message = m.Message })
+            .ToList();
+        if (missing.Count > 0)
+            throw AppException.BadRequest("VALIDATION_ERROR", "Complete the required fields before submit", missing);
     }
 
     private async Task WriteDraft(Guid profileId, Guid applicationId, JsonElement answers, CancellationToken ct)
