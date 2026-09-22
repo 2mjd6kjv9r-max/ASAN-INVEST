@@ -135,5 +135,74 @@ public static class Workflow
         (CaseInternalStatus.REJECTED, CaseInternalStatus.ARCHIVED, [UserRole.SYSADMIN, UserRole.SUPERVISOR]),
         (CaseInternalStatus.WITHDRAWN, CaseInternalStatus.ARCHIVED, [UserRole.SYSADMIN, UserRole.SUPERVISOR]),
         (CaseInternalStatus.REJECTED, CaseInternalStatus.UNDER_REVIEW, [UserRole.SUPERVISOR]),
+        // TZ §14.2 Ombudsman
+        (CaseInternalStatus.REGISTERED, CaseInternalStatus.UNDER_INVESTIGATION, [UserRole.OMBUDSMAN_OFFICER, UserRole.SUPERVISOR, UserRole.SYSADMIN]),
+        (CaseInternalStatus.UNDER_INVESTIGATION, CaseInternalStatus.IN_MEDIATION, [UserRole.OMBUDSMAN_OFFICER, UserRole.SUPERVISOR]),
+        (CaseInternalStatus.UNDER_INVESTIGATION, CaseInternalStatus.WAITING_ADDITIONAL_INFO, [UserRole.OMBUDSMAN_OFFICER, UserRole.SUPERVISOR]),
+        (CaseInternalStatus.UNDER_INVESTIGATION, CaseInternalStatus.OPINION_PREPARED, [UserRole.OMBUDSMAN_OFFICER]),
+        (CaseInternalStatus.IN_MEDIATION, CaseInternalStatus.OPINION_PREPARED, [UserRole.OMBUDSMAN_OFFICER]),
+        (CaseInternalStatus.IN_MEDIATION, CaseInternalStatus.UNDER_INVESTIGATION, [UserRole.OMBUDSMAN_OFFICER, UserRole.SUPERVISOR]),
+        (CaseInternalStatus.OPINION_PREPARED, CaseInternalStatus.OPINION_PENDING_APPROVAL, [UserRole.OMBUDSMAN_OFFICER, UserRole.SUPERVISOR]),
+        (CaseInternalStatus.OPINION_PENDING_APPROVAL, CaseInternalStatus.COMPLETED, [UserRole.SUPERVISOR, UserRole.SYSADMIN]),
+        (CaseInternalStatus.OPINION_PENDING_APPROVAL, CaseInternalStatus.OPINION_PREPARED, [UserRole.SUPERVISOR, UserRole.SYSADMIN]),
+        (CaseInternalStatus.WAITING_ADDITIONAL_INFO, CaseInternalStatus.UNDER_INVESTIGATION, [UserRole.INVESTOR, UserRole.OMBUDSMAN_OFFICER]),
+        (CaseInternalStatus.UNDER_INVESTIGATION, CaseInternalStatus.WITHDRAWN, [UserRole.INVESTOR]),
+        (CaseInternalStatus.IN_MEDIATION, CaseInternalStatus.WITHDRAWN, [UserRole.INVESTOR]),
+        (CaseInternalStatus.OPINION_PREPARED, CaseInternalStatus.WITHDRAWN, [UserRole.INVESTOR]),
+        (CaseInternalStatus.UNDER_INVESTIGATION, CaseInternalStatus.COMPLETED, [UserRole.OMBUDSMAN_OFFICER, UserRole.SUPERVISOR]),
+        (CaseInternalStatus.IN_MEDIATION, CaseInternalStatus.COMPLETED, [UserRole.OMBUDSMAN_OFFICER, UserRole.SUPERVISOR]),
+        // TZ §14.2 Aftercare
+        (CaseInternalStatus.REGISTERED, CaseInternalStatus.IN_MONITORING, [UserRole.CASE_MANAGER, UserRole.SUPERVISOR, UserRole.SYSADMIN]),
+        (CaseInternalStatus.IN_MONITORING, CaseInternalStatus.NEXT_CONTACT_PLANNED, [UserRole.CASE_MANAGER, UserRole.SUPERVISOR]),
+        (CaseInternalStatus.NEXT_CONTACT_PLANNED, CaseInternalStatus.IN_MONITORING, [UserRole.CASE_MANAGER, UserRole.SUPERVISOR]),
+        (CaseInternalStatus.IN_MONITORING, CaseInternalStatus.WAITING_ADDITIONAL_INFO, [UserRole.CASE_MANAGER, UserRole.SUPERVISOR]),
+        (CaseInternalStatus.WAITING_ADDITIONAL_INFO, CaseInternalStatus.IN_MONITORING, [UserRole.INVESTOR, UserRole.CASE_MANAGER]),
+        (CaseInternalStatus.IN_MONITORING, CaseInternalStatus.COMPLETED, [UserRole.CASE_MANAGER, UserRole.SUPERVISOR]),
+        (CaseInternalStatus.NEXT_CONTACT_PLANNED, CaseInternalStatus.COMPLETED, [UserRole.CASE_MANAGER, UserRole.SUPERVISOR]),
+        (CaseInternalStatus.IN_MONITORING, CaseInternalStatus.WITHDRAWN, [UserRole.INVESTOR]),
+        (CaseInternalStatus.NEXT_CONTACT_PLANNED, CaseInternalStatus.WITHDRAWN, [UserRole.INVESTOR]),
     ];
+}
+
+/// FR-REG-05…07 — bank KYC pilot is capped at two institutions.
+public static class BankPilot
+{
+    public const int MaxBanks = 2;
+
+    public static bool ExceedsLimit(int uniqueBankCount) => uniqueBankCount > MaxBanks;
+}
+
+/// PLAN-PHASE2 §4.2.2 — lift WORKFLOW_PHASE2 only for these type codes.
+public static class Phase2Types
+{
+    public static readonly HashSet<string> Codes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "ombudsman", "aftercare", "company_registration", "bank_kyc",
+    };
+
+    public static bool AllowsWorkflow(string typeCode, WorkflowKind workflow) =>
+        workflow == WorkflowKind.STANDARD || Codes.Contains(typeCode);
+}
+
+public static class PaymentHmac
+{
+    public static string Sign(string secret, string payload)
+    {
+        var key = System.Text.Encoding.UTF8.GetBytes(secret);
+        var data = System.Text.Encoding.UTF8.GetBytes(payload);
+        var hash = System.Security.Cryptography.HMACSHA256.HashData(key, data);
+        return Convert.ToHexString(hash).ToLowerInvariant();
+    }
+
+    public static bool Verify(string secret, string payload, string? signature)
+    {
+        if (string.IsNullOrWhiteSpace(secret) || string.IsNullOrWhiteSpace(signature)) return false;
+        var expected = Sign(secret, payload);
+        var provided = signature.Trim().ToLowerInvariant();
+        if (provided.StartsWith("sha256=", StringComparison.Ordinal)) provided = provided[7..];
+        var expectedBytes = System.Text.Encoding.UTF8.GetBytes(expected);
+        var providedBytes = System.Text.Encoding.UTF8.GetBytes(provided);
+        return expectedBytes.Length == providedBytes.Length
+            && System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(expectedBytes, providedBytes);
+    }
 }

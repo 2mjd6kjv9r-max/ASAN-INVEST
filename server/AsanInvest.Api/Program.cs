@@ -12,29 +12,14 @@ using FluentValidation.AspNetCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
 
 var settings = AppSettings.FromConfiguration(builder.Configuration);
 builder.Services.AddSingleton(settings);
-builder.Services.Configure<AppSettings>(_ =>
-{
-    _.DatabaseUrl = settings.DatabaseUrl;
-    _.Port = settings.Port;
-    _.ClientOrigin = settings.ClientOrigin;
-    _.JwtAccessSecret = settings.JwtAccessSecret;
-    _.JwtRefreshSecret = settings.JwtRefreshSecret;
-    _.JwtAccessExpiresIn = settings.JwtAccessExpiresIn;
-    _.JwtRefreshExpiresIn = settings.JwtRefreshExpiresIn;
-    _.BcryptRounds = settings.BcryptRounds;
-    _.RequireEmailVerification = settings.RequireEmailVerification;
-    _.CookieSecure = settings.CookieSecure;
-    _.RefreshCookieName = settings.RefreshCookieName;
-    _.UploadDir = settings.UploadDir;
-    _.MaxUploadBytes = settings.MaxUploadBytes;
-    _.DvxCompanyRegistrationUrl = settings.DvxCompanyRegistrationUrl;
-});
+builder.Services.AddSingleton<IOptions<AppSettings>>(Options.Create(settings));
 
 if (!builder.Environment.IsEnvironment("Testing"))
     builder.WebHost.UseUrls($"http://0.0.0.0:{settings.Port}");
@@ -47,10 +32,14 @@ builder.Services.AddDbContext<AsanInvestDbContext>((sp, options) =>
 builder.Services.AddScoped<IAppDbContext>(sp => sp.GetRequiredService<AsanInvestDbContext>());
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<PlatformService>();
+builder.Services.AddScoped<Phase2Service>();
 builder.Services.AddSingleton<AuthChallengeStore>();
 builder.Services.AddSingleton<IEmailSender, LoggingEmailSender>();
 builder.Services.AddSingleton<ISmsSender, LoggingSmsSender>();
 builder.Services.AddSingleton<IAsanLoginClient, AsanLoginStub>();
+builder.Services.AddSingleton<IDvxClient, DvxClientStub>();
+builder.Services.AddSingleton<IBankKycClient, BankKycClientStub>();
+builder.Services.AddSingleton<IPaymentProvider, PaymentProviderStub>();
 
 builder.Services.AddFluentValidationAutoValidation();
 builder.Services.AddValidatorsFromAssemblyContaining<RegisterRequestValidator>();

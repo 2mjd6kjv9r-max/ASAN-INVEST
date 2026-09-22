@@ -63,6 +63,18 @@ public sealed class HttpContractTests : IClassFixture<ApiFactory>
         using var body = JsonDocument.Parse(await res.Content.ReadAsStringAsync());
         Assert.Equal("NOT_FOUND", body.RootElement.GetProperty("error").GetProperty("code").GetString());
     }
+
+    [Fact]
+    public async Task Company_registration_adds_electronic_submit_flag_without_renaming_phase1_fields()
+    {
+        var res = await _client.GetAsync("/api/v1/company-registration");
+        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+        using var body = JsonDocument.Parse(await res.Content.ReadAsStringAsync());
+        var data = body.RootElement.GetProperty("data");
+        Assert.Equal(JsonValueKind.String, data.GetProperty("url").ValueKind);
+        Assert.Equal(JsonValueKind.String, data.GetProperty("message").ValueKind);
+        Assert.False(data.GetProperty("electronicSubmitAvailable").GetBoolean());
+    }
 }
 
 public sealed class DomainRuleTests
@@ -172,6 +184,57 @@ public sealed class DomainRuleTests
         Assert.Throws<InvalidOperationException>(() => Workflow.AssertLinked(Guid.NewGuid(), Guid.NewGuid()));
         Workflow.AssertLinked(null, Guid.NewGuid());
         Workflow.AssertLinked(Guid.NewGuid(), null);
+    }
+
+    [Fact]
+    public void Ombudsman_and_aftercare_transitions_are_role_scoped()
+    {
+        Assert.True(Workflow.CanTransition(CaseInternalStatus.REGISTERED, CaseInternalStatus.UNDER_INVESTIGATION, [UserRole.OMBUDSMAN_OFFICER]));
+        Assert.True(Workflow.CanTransition(CaseInternalStatus.OPINION_PENDING_APPROVAL, CaseInternalStatus.COMPLETED, [UserRole.SUPERVISOR]));
+        Assert.False(Workflow.CanTransition(CaseInternalStatus.OPINION_PENDING_APPROVAL, CaseInternalStatus.COMPLETED, [UserRole.OMBUDSMAN_OFFICER]));
+        Assert.True(Workflow.CanTransition(CaseInternalStatus.IN_MONITORING, CaseInternalStatus.NEXT_CONTACT_PLANNED, [UserRole.CASE_MANAGER]));
+        Assert.False(Workflow.CanTransition(CaseInternalStatus.IN_MONITORING, CaseInternalStatus.NEXT_CONTACT_PLANNED, [UserRole.INVESTOR]));
+    }
+
+    [Fact]
+    public void Phase2_application_types_lift_workflow_gate()
+    {
+        Assert.True(Phase2Types.AllowsWorkflow("standard-permit", WorkflowKind.STANDARD));
+        Assert.True(Phase2Types.AllowsWorkflow("ombudsman", WorkflowKind.OMBUDSMAN));
+        Assert.True(Phase2Types.AllowsWorkflow("aftercare", WorkflowKind.AFTERCARE));
+        Assert.True(Phase2Types.AllowsWorkflow("company_registration", WorkflowKind.STANDARD));
+        Assert.True(Phase2Types.AllowsWorkflow("bank_kyc", WorkflowKind.STANDARD));
+        Assert.False(Phase2Types.AllowsWorkflow("future-module", WorkflowKind.OMBUDSMAN));
+    }
+
+    [Fact]
+    public void Bank_pilot_rejects_more_than_two_institutions()
+    {
+        Assert.False(BankPilot.ExceedsLimit(2));
+        Assert.True(BankPilot.ExceedsLimit(3));
+        Assert.Equal(2, BankPilot.MaxBanks);
+    }
+
+    [Fact]
+    public void Payment_hmac_rejects_missing_secret_and_stolen_user_token_shape()
+    {
+        const string payload = """{"status":"SUCCEEDED"}""";
+        Assert.False(PaymentHmac.Verify("", payload, "abcd"));
+        Assert.False(PaymentHmac.Verify("webhook-secret", payload, null));
+        var sig = PaymentHmac.Sign("webhook-secret", payload);
+        Assert.True(PaymentHmac.Verify("webhook-secret", payload, sig));
+        Assert.True(PaymentHmac.Verify("webhook-secret", payload, "sha256=" + sig));
+        Assert.False(PaymentHmac.Verify("webhook-secret", payload, PaymentHmac.Sign("other", payload)));
+    }
+
+    [Fact]
+    public void Feature_flags_default_off()
+    {
+        var settings = new AppSettings();
+        Assert.False(settings.OmbudsmanEnabled);
+        Assert.False(settings.DvxSubmitEnabled);
+        Assert.False(settings.PaymentsEnabled);
+        Assert.False(settings.BankPilotEnabled);
     }
 
     [Fact]

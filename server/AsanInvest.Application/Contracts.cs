@@ -80,3 +80,17 @@ public sealed record KyaRequest(
     string? Description,
     bool ConfirmedParameters,
     JsonElement? SiParameters);
+
+public sealed record CompanyPackageRequest(string? LegalForm);
+public sealed record BankSubmissionsRequest(List<Guid> BankInstitutionIds);
+public sealed record BankDecisionRequest(string Outcome, string? Reason);
+public sealed record MediationNotesRequest(string Body);
+public sealed record CaseOpinionRequest(string Opinion);
+public sealed record SystemicProblemCreateRequest(string Category, Guid InstitutionId, string Cause, ReformStatus? ReformStatus);
+public sealed record SystemicProblemLinkRequest(Guid ApplicationId);
+public sealed record NextContactRequest(DateTimeOffset At, string Purpose);
+public sealed record PaymentCreateRequest(PaymentKind Kind, string Amount, string Currency, Guid? ApplicationId, Guid? ProjectId);
+public sealed record PaymentConfirmRequest(PaymentStatus Status, string? ProviderRef, string? FailureReason);
+public sealed record PartnerCreateRequest(JsonElement Names, string ServiceKind, string PriceAmount, string PriceCurrency, string? DurationNote, string? Rating, AccreditationStatus? AccreditationStatus, bool? IsActive);
+public sealed record PartnerBindRequest(Guid PartnerId);
+public sealed record FeeCreateRequest(string Code, JsonElement Names, string Amount, string Currency, Guid? ProcedureId, Guid? ApplicationTypeId, bool? IsActive);
