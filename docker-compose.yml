@@ -1,0 +1,23 @@
+# Development PostgreSQL 16. Production must run in Azerbaijan (NFR-01).
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: asan-invest-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: asan
+      POSTGRES_PASSWORD: asan_dev_password
+      POSTGRES_DB: asan_invest
+    ports:
+      - "5432:5432"
+    volumes:
+      - asan_invest_pg:/var/lib/postgresql/data
+      - ./server/prisma/init-dev.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U asan -d asan_invest"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  asan_invest_pg:
