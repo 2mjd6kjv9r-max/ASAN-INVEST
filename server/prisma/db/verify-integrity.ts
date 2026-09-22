@@ -22,24 +22,108 @@ async function expectReject(name: string, fn: () => Promise<unknown>, match?: st
   }
 }
 
-async function main() {
-  const statusCount = await prisma.workflowStatus.count();
-  record("standart workflow statuses seeded", statusCount === 13, `count=${statusCount}`);
+async function tableExists(name: string) {
+  const rows = await prisma.$queryRaw<Array<{ exists: boolean }>>`
+    SELECT EXISTS (
+      SELECT 1 FROM information_schema.tables
+      WHERE table_schema = 'public' AND table_name = ${name}
+    ) AS exists
+  `;
+  return rows[0]?.exists === true;
+}
 
-  const forbidden = await prisma.$queryRaw<Array<{ internal_status: string }>>`
-    SELECT internal_status::text
+async function main() {
+  const standardCount = await prisma.workflowStatus.count({ where: { workflow: "STANDARD" } });
+  record("standart workflow statuses seeded", standardCount === 13, `count=${standardCount}`);
+
+  const ombCount = await prisma.workflowStatus.count({ where: { workflow: "OMBUDSMAN" } });
+  record("ombudsman workflow statuses seeded", ombCount === 13, `count=${ombCount}`);
+
+  const aftCount = await prisma.workflowStatus.count({ where: { workflow: "AFTERCARE" } });
+  record("aftercare workflow statuses seeded", aftCount === 12, `count=${aftCount}`);
+
+  const extra = await prisma.$queryRaw<Array<{ internal_status: string }>>`
+    SELECT DISTINCT internal_status::text
     FROM workflow_statuses
     WHERE internal_status::text IN (
       'UNDER_INVESTIGATION', 'IN_MEDIATION', 'OPINION_PREPARED',
       'OPINION_PENDING_APPROVAL', 'NEXT_CONTACT_PLANNED', 'IN_MONITORING'
     )
   `;
-  record("no TZ §14.2 Ombudsman/Aftercare statuses", forbidden.length === 0);
+  record("TZ §14.2 Ombudsman/Aftercare statuses present", extra.length === 6, `count=${extra.length}`);
 
   const mappingOk = (await prisma.workflowStatus.findMany()).every(
     (row) => INVESTOR_VISIBLE_STATUS[row.internalStatus] === row.investorVisibleStatus,
   );
-  record("workflow_statuses match TZ §14.1 mapping", mappingOk);
+  record("workflow_statuses match TZ §14.1 / §14.2 mapping", mappingOk);
+
+  const types = await prisma.applicationType.findMany({
+    where: { code: { in: ["ombudsman", "aftercare", "company_registration", "bank_kyc"] } },
+  });
+  record("Phase 2 application types seeded", types.length === 4, `count=${types.length}`);
+
+  const banks = await prisma.classification.count({
+    where: { kind: "INSTITUTION", code: { in: ["pilot-bank-a", "pilot-bank-b"] } },
+  });
+  record("two pilot bank institutions", banks === 2, `count=${banks}`);
+
+  const dvx = await prisma.classification.findFirst({
+    where: { kind: "INSTITUTION", code: { in: ["dvx", "state-tax-service"] } },
+  });
+  record("DVX institution present", dvx !== null);
+
+  const partners = await prisma.partner.count({ where: { accreditationStatus: "ACTIVE" } });
+  record("ACTIVE accredited partners seeded", partners >= 3, `count=${partners}`);
+
+  const fees = await prisma.stateFee.findUnique({ where: { code: "e_company_registration" } });
+  record("e-registration state fee is 0 AZN", fees !== null && Number(fees.amount) === 0 && fees.currency === "AZN");
+
+  const ombudsmanPage = await prisma.cmsContent.findUnique({ where: { slug: "ombudsman" } });
+  record("Ombudsman CMS page published", ombudsmanPage?.status === "PUBLISHED");
+
+  const officer = await prisma.user.findUnique({
+    where: { email: "ombudsman@asaninvest.local" },
+    include: { roleAssignments: true },
+  });
+  record(
+    "OMBUDSMAN_OFFICER seed has 2FA",
+    officer?.twoFactorEnabled === true
+      && officer.roleAssignments.some((r) => r.role === "OMBUDSMAN_OFFICER"),
+  );
+
+  record("systemic_problems table", await tableExists("systemic_problems"));
+  record("partners table", await tableExists("partners"));
+  record("partner_selections table", await tableExists("partner_selections"));
+  record("integration_messages table", await tableExists("integration_messages"));
+  record("state_fees table", await tableExists("state_fees"));
+
+  const paymentEnum = await prisma.$queryRaw<Array<{ exists: boolean }>>`
+    SELECT EXISTS (
+      SELECT 1 FROM pg_type WHERE typname = 'payment_status'
+    ) AS exists
+  `;
+  record("payment_status enum", paymentEnum[0]?.exists === true);
+
+  const phase1Xor = await prisma.$queryRaw<Array<{ exists: boolean }>>`
+    SELECT EXISTS (
+      SELECT 1 FROM pg_constraint WHERE conname = 'applications_z02_link'
+    ) AS exists
+  `;
+  record("Phase 1 Z-02 XOR constraint kept", phase1Xor[0]?.exists === true);
+
+  const snapshotTrigger = await prisma.$queryRaw<Array<{ exists: boolean }>>`
+    SELECT EXISTS (
+      SELECT 1 FROM pg_trigger WHERE tgname = 'applications_snapshot_immutable'
+    ) AS exists
+  `;
+  record("Phase 1 snapshot trigger kept", snapshotTrigger[0]?.exists === true);
+
+  const auditTrigger = await prisma.$queryRaw<Array<{ exists: boolean }>>`
+    SELECT EXISTS (
+      SELECT 1 FROM pg_trigger WHERE tgname = 'audit_records_no_update'
+    ) AS exists
+  `;
+  record("Phase 1 audit immutability kept", auditTrigger[0]?.exists === true);
 
   const emailUnique = await prisma.$queryRaw<Array<{ exists: boolean }>>`
     SELECT EXISTS (
@@ -159,6 +243,31 @@ async function main() {
     "append-only",
   );
 
+  const integration = await prisma.integrationMessage.create({
+    data: {
+      provider: "dvx",
+      direction: "OUTBOUND",
+      objectType: "application",
+      objectId: application.id,
+      payload: { probe: true },
+      status: "recorded",
+    },
+  });
+  await expectReject(
+    "integration_messages update forbidden",
+    () =>
+      prisma.integrationMessage.update({
+        where: { id: integration.id },
+        data: { status: "tampered" },
+      }),
+    "append-only",
+  );
+  await expectReject(
+    "integration_messages delete forbidden",
+    () => prisma.integrationMessage.delete({ where: { id: integration.id } }),
+    "append-only",
+  );
+
   await prisma.application.delete({ where: { id: application.id } });
   await prisma.project.delete({ where: { id: project.id } });
 
@@ -168,6 +277,16 @@ async function main() {
     WHERE table_name = 'projects' AND column_name = 'volume_amount'
   `;
   record("projects.volume_amount is numeric", money[0]?.data_type === "numeric");
+
+  const partnerMoney = await prisma.$queryRaw<Array<{ numeric_precision: number | null; numeric_scale: number | null }>>`
+    SELECT numeric_precision, numeric_scale
+    FROM information_schema.columns
+    WHERE table_name = 'partners' AND column_name = 'price_amount'
+  `;
+  record(
+    "partners.price_amount is NUMERIC(18,2)",
+    partnerMoney[0]?.numeric_precision === 18 && partnerMoney[0]?.numeric_scale === 2,
+  );
 
   const failed = checks.filter((c) => !c.ok);
   if (failed.length > 0) {

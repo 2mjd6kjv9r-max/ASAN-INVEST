@@ -47,6 +47,9 @@ public static class NpgsqlSetup
         builder.MapEnum<ClassificationKind>("classification_kind", names);
         builder.MapEnum<CmsStatus>("cms_status", names);
         builder.MapEnum<PaymentKind>("payment_kind", names);
+        builder.MapEnum<PaymentStatus>("payment_status", names);
+        builder.MapEnum<ReformStatus>("reform_status", names);
+        builder.MapEnum<AccreditationStatus>("accreditation_status", names);
         builder.MapEnum<ApplicationSource>("application_source", names);
         builder.MapEnum<DocumentLinkObject>("document_link_object", names);
         return builder.Build();

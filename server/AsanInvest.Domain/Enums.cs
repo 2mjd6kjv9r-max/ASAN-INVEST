@@ -21,6 +21,14 @@ public enum CaseInternalStatus
     REJECTED,
     WITHDRAWN,
     ARCHIVED,
+    /// TZ §14.2 Ombudsman
+    UNDER_INVESTIGATION,
+    IN_MEDIATION,
+    OPINION_PREPARED,
+    OPINION_PENDING_APPROVAL,
+    /// TZ §14.2 Aftercare
+    NEXT_CONTACT_PLANNED,
+    IN_MONITORING,
 }
 
 public enum InvestorVisibleStatus
@@ -74,7 +82,15 @@ public enum AuthProvider { EMAIL, ASAN_LOGIN }
 
 public enum ProjectSizeCategory { SMALL, LARGE }
 
-public enum WorkflowKind { STANDARD }
+public enum WorkflowKind { STANDARD, OMBUDSMAN, AFTERCARE }
+
+public enum PaymentStatus { INITIATED, SUCCEEDED, FAILED, REFUNDED, EXTERNAL }
+
+/// FR-OMB-07
+public enum ReformStatus { IDENTIFIED, PROPOSED, ACCEPTED, IMPLEMENTED }
+
+/// FR-ADM-10 / FR-PAY-02
+public enum AccreditationStatus { PENDING, ACTIVE, SUSPENDED, REVOKED }
 
 public enum Currency { AZN, USD, EUR }
 

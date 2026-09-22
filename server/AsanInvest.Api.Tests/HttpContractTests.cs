@@ -97,6 +97,13 @@ public sealed class DomainRuleTests
     }
 
     [Fact]
+    public void Ombudsman_officer_is_internal_and_requires_2fa()
+    {
+        Assert.True(Roles.RequiresTwoFactor([UserRole.OMBUDSMAN_OFFICER]));
+        Assert.True(Roles.IsInternal([UserRole.OMBUDSMAN_OFFICER]));
+    }
+
+    [Fact]
     public void Supervisor_only_reopen()
     {
         Assert.True(Workflow.CanTransition(CaseInternalStatus.REJECTED, CaseInternalStatus.UNDER_REVIEW, [UserRole.SUPERVISOR]));
@@ -175,6 +182,12 @@ public sealed class DomainRuleTests
         Assert.Equal(InvestorVisibleStatus.WAITING_YOUR_RESPONSE, StatusMapping.ToInvestorStatus(CaseInternalStatus.WAITING_ADDITIONAL_INFO));
         Assert.Equal(InvestorVisibleStatus.AT_INSTITUTION, StatusMapping.ToInvestorStatus(CaseInternalStatus.INTER_AGENCY_COORDINATION));
         Assert.Equal(InvestorVisibleStatus.COMPLETED, StatusMapping.ToInvestorStatus(CaseInternalStatus.COMPLETED));
+        Assert.Equal(InvestorVisibleStatus.UNDER_CONSIDERATION, StatusMapping.ToInvestorStatus(CaseInternalStatus.UNDER_INVESTIGATION));
+        Assert.Equal(InvestorVisibleStatus.UNDER_CONSIDERATION, StatusMapping.ToInvestorStatus(CaseInternalStatus.IN_MEDIATION));
+        Assert.Equal(InvestorVisibleStatus.UNDER_CONSIDERATION, StatusMapping.ToInvestorStatus(CaseInternalStatus.OPINION_PREPARED));
+        Assert.Equal(InvestorVisibleStatus.RESULT_BEING_PREPARED, StatusMapping.ToInvestorStatus(CaseInternalStatus.OPINION_PENDING_APPROVAL));
+        Assert.Equal(InvestorVisibleStatus.UNDER_CONSIDERATION, StatusMapping.ToInvestorStatus(CaseInternalStatus.NEXT_CONTACT_PLANNED));
+        Assert.Equal(InvestorVisibleStatus.UNDER_CONSIDERATION, StatusMapping.ToInvestorStatus(CaseInternalStatus.IN_MONITORING));
         Assert.Equal(StatusMapping.StageOpen, StatusMapping.ToStageStatus(false, false, false, null));
         Assert.Equal(StatusMapping.StageWaiting, StatusMapping.ToStageStatus(false, false, true, CaseInternalStatus.WAITING_ADDITIONAL_INFO));
         Assert.Equal(StatusMapping.StageCompleted, StatusMapping.ToStageStatus(false, false, true, CaseInternalStatus.COMPLETED));

@@ -39,6 +39,12 @@ public sealed class AsanInvestDbContext : DbContext, Application.IAppDbContext
     public DbSet<NotificationTemplate> NotificationTemplates => Set<NotificationTemplate>();
     public DbSet<GuestSession> GuestSessions => Set<GuestSession>();
     public DbSet<Payment> Payments => Set<Payment>();
+    public DbSet<SystemicProblem> SystemicProblems => Set<SystemicProblem>();
+    public DbSet<SystemicProblemApplication> SystemicProblemApplications => Set<SystemicProblemApplication>();
+    public DbSet<Partner> Partners => Set<Partner>();
+    public DbSet<PartnerSelection> PartnerSelections => Set<PartnerSelection>();
+    public DbSet<IntegrationMessage> IntegrationMessages => Set<IntegrationMessage>();
+    public DbSet<StateFee> StateFees => Set<StateFee>();
 
     public async Task<string> NextApplicationPublicNumberAsync(CancellationToken cancellationToken = default)
     {
@@ -82,6 +88,9 @@ public sealed class AsanInvestDbContext : DbContext, Application.IAppDbContext
         modelBuilder.HasPostgresEnum<ClassificationKind>("classification_kind");
         modelBuilder.HasPostgresEnum<CmsStatus>("cms_status");
         modelBuilder.HasPostgresEnum<PaymentKind>("payment_kind");
+        modelBuilder.HasPostgresEnum<PaymentStatus>("payment_status");
+        modelBuilder.HasPostgresEnum<ReformStatus>("reform_status");
+        modelBuilder.HasPostgresEnum<AccreditationStatus>("accreditation_status");
         modelBuilder.HasPostgresEnum<ApplicationSource>("application_source");
         modelBuilder.HasPostgresEnum<DocumentLinkObject>("document_link_object");
 
@@ -142,6 +151,9 @@ public sealed class AsanInvestDbContext : DbContext, Application.IAppDbContext
             e.Property(x => x.CompanyRegId).HasColumnName("company_reg_id");
             e.Property(x => x.TaxId).HasColumnName("tax_id");
             e.Property(x => x.CompanyActivity).HasColumnName("company_activity");
+            e.Property(x => x.DvxRegistrationStatus).HasColumnName("dvx_registration_status");
+            e.Property(x => x.DvxRegisteredAt).HasColumnName("dvx_registered_at");
+            e.Property(x => x.CompanyLegalForm).HasColumnName("company_legal_form");
             e.Property(x => x.UboStructure).HasColumnName("ubo_structure").HasColumnType("jsonb");
             e.Property(x => x.Version).HasColumnName("version");
             e.Property(x => x.CreatedAt).HasColumnName("created_at");
@@ -251,12 +263,14 @@ public sealed class AsanInvestDbContext : DbContext, Application.IAppDbContext
             e.Property(x => x.WithdrawnAt).HasColumnName("withdrawn_at");
             e.Property(x => x.WithdrawalReason).HasColumnName("withdrawal_reason");
             e.Property(x => x.SubmittedAt).HasColumnName("submitted_at");
+            e.Property(x => x.LinkedCaseId).HasColumnName("linked_case_id");
             e.Property(x => x.CreatedAt).HasColumnName("created_at");
             e.Property(x => x.UpdatedAt).HasColumnName("updated_at");
             e.HasOne(x => x.Type).WithMany().HasForeignKey(x => x.TypeId);
             e.HasOne(x => x.Project).WithMany(p => p.Applications).HasForeignKey(x => x.ProjectId);
             e.HasOne(x => x.Profile).WithMany(p => p.Applications).HasForeignKey(x => x.ProfileId);
             e.HasOne(x => x.Case).WithOne(c => c.Application).HasForeignKey<Case>(c => c.ApplicationId);
+            e.HasOne(x => x.LinkedCase).WithMany(c => c.OmbudsmanApplications).HasForeignKey(x => x.LinkedCaseId).OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<Case>(e =>
@@ -564,10 +578,107 @@ public sealed class AsanInvestDbContext : DbContext, Application.IAppDbContext
             e.Property(x => x.Amount).HasColumnName("amount").HasColumnType("numeric(18,2)");
             e.Property(x => x.Currency).HasColumnName("currency");
             e.Property(x => x.Status).HasColumnName("status");
+            e.Property(x => x.Provider).HasColumnName("provider");
+            e.Property(x => x.ProviderRef).HasColumnName("provider_ref");
+            e.Property(x => x.RawPayload).HasColumnName("raw_payload").HasColumnType("jsonb");
+            e.Property(x => x.FailureReason).HasColumnName("failure_reason");
+            e.Property(x => x.PaidAt).HasColumnName("paid_at");
             e.Property(x => x.ReceiptDocumentId).HasColumnName("receipt_document_id");
             e.Property(x => x.ProjectId).HasColumnName("project_id");
             e.Property(x => x.ApplicationId).HasColumnName("application_id");
             e.Property(x => x.CreatedAt).HasColumnName("created_at");
+        });
+
+        modelBuilder.Entity<SystemicProblem>(e =>
+        {
+            e.ToTable("systemic_problems");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id");
+            e.Property(x => x.Category).HasColumnName("category");
+            e.Property(x => x.InstitutionId).HasColumnName("institution_id");
+            e.Property(x => x.Cause).HasColumnName("cause");
+            e.Property(x => x.ReformStatus).HasColumnName("reform_status");
+            e.Property(x => x.CreatedAt).HasColumnName("created_at");
+            e.Property(x => x.UpdatedAt).HasColumnName("updated_at");
+            e.HasOne(x => x.Institution).WithMany().HasForeignKey(x => x.InstitutionId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<SystemicProblemApplication>(e =>
+        {
+            e.ToTable("systemic_problem_applications");
+            e.HasKey(x => new { x.ProblemId, x.ApplicationId });
+            e.Property(x => x.ProblemId).HasColumnName("problem_id");
+            e.Property(x => x.ApplicationId).HasColumnName("application_id");
+            e.HasOne(x => x.Problem).WithMany(p => p.Applications).HasForeignKey(x => x.ProblemId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Application).WithMany(a => a.SystemicProblemLinks).HasForeignKey(x => x.ApplicationId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<Partner>(e =>
+        {
+            e.ToTable("partners");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id");
+            e.Property(x => x.Names).HasColumnName("names").HasColumnType("jsonb");
+            e.Property(x => x.ServiceKind).HasColumnName("service_kind");
+            e.Property(x => x.PriceAmount).HasColumnName("price_amount").HasColumnType("numeric(18,2)");
+            e.Property(x => x.PriceCurrency).HasColumnName("price_currency");
+            e.Property(x => x.DurationNote).HasColumnName("duration_note");
+            e.Property(x => x.Rating).HasColumnName("rating").HasColumnType("numeric(3,2)");
+            e.Property(x => x.AccreditationStatus).HasColumnName("accreditation_status");
+            e.Property(x => x.IsActive).HasColumnName("is_active");
+            e.Property(x => x.CreatedAt).HasColumnName("created_at");
+            e.Property(x => x.UpdatedAt).HasColumnName("updated_at");
+        });
+
+        modelBuilder.Entity<PartnerSelection>(e =>
+        {
+            e.ToTable("partner_selections");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id");
+            e.Property(x => x.PartnerId).HasColumnName("partner_id");
+            e.Property(x => x.StageId).HasColumnName("stage_id");
+            e.Property(x => x.UserId).HasColumnName("user_id");
+            e.Property(x => x.ApplicationId).HasColumnName("application_id");
+            e.Property(x => x.SelectedAt).HasColumnName("selected_at");
+            e.HasIndex(x => x.StageId).IsUnique();
+            e.HasOne(x => x.Partner).WithMany(p => p.Selections).HasForeignKey(x => x.PartnerId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.Stage).WithMany(s => s.PartnerSelections).HasForeignKey(x => x.StageId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.User).WithMany(u => u.PartnerSelections).HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.Application).WithMany(a => a.PartnerSelections).HasForeignKey(x => x.ApplicationId).OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<IntegrationMessage>(e =>
+        {
+            e.ToTable("integration_messages");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id");
+            e.Property(x => x.Provider).HasColumnName("provider");
+            e.Property(x => x.Direction).HasColumnName("direction");
+            e.Property(x => x.ObjectType).HasColumnName("object_type");
+            e.Property(x => x.ObjectId).HasColumnName("object_id");
+            e.Property(x => x.ProviderRef).HasColumnName("provider_ref");
+            e.Property(x => x.Payload).HasColumnName("payload").HasColumnType("jsonb");
+            e.Property(x => x.Status).HasColumnName("status");
+            e.Property(x => x.OccurredAt).HasColumnName("occurred_at");
+        });
+
+        modelBuilder.Entity<StateFee>(e =>
+        {
+            e.ToTable("state_fees");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id");
+            e.Property(x => x.Code).HasColumnName("code");
+            e.Property(x => x.Names).HasColumnName("names").HasColumnType("jsonb");
+            e.Property(x => x.Amount).HasColumnName("amount").HasColumnType("numeric(18,2)");
+            e.Property(x => x.Currency).HasColumnName("currency");
+            e.Property(x => x.ProcedureId).HasColumnName("procedure_id");
+            e.Property(x => x.ApplicationTypeId).HasColumnName("application_type_id");
+            e.Property(x => x.IsActive).HasColumnName("is_active");
+            e.Property(x => x.CreatedAt).HasColumnName("created_at");
+            e.Property(x => x.UpdatedAt).HasColumnName("updated_at");
+            e.HasIndex(x => x.Code).IsUnique();
+            e.HasOne(x => x.Procedure).WithMany(p => p.StateFees).HasForeignKey(x => x.ProcedureId).OnDelete(DeleteBehavior.SetNull);
+            e.HasOne(x => x.ApplicationType).WithMany(t => t.StateFees).HasForeignKey(x => x.ApplicationTypeId).OnDelete(DeleteBehavior.SetNull);
         });
     }
 }

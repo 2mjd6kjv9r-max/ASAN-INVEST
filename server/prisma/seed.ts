@@ -1,12 +1,12 @@
 import bcrypt from "bcryptjs";
 import {
+  AccreditationStatus,
   AuthProvider,
   CaseInternalStatus,
   CmsStatus,
   Currency,
   Flag,
   IdentificationLevel,
-  InvestorVisibleStatus,
   NotificationChannel,
   RuleSetKind,
   UserRole,
@@ -20,6 +20,11 @@ const SYSADMIN_ID = "00000000-0000-4000-8000-000000000001";
 const SYSADMIN_PROFILE_ID = "00000000-0000-4000-8000-000000000002";
 const SYSADMIN_EMAIL = "sysadmin@asaninvest.local";
 const SYSADMIN_PASSWORD = "ChangeMe_Sysadmin_123";
+
+const OMBUDSMAN_ID = "00000000-0000-4000-8000-000000000003";
+const OMBUDSMAN_PROFILE_ID = "00000000-0000-4000-8000-000000000004";
+const OMBUDSMAN_EMAIL = "ombudsman@asaninvest.local";
+const OMBUDSMAN_PASSWORD = "ChangeMe_Ombudsman_123";
 
 const names = (az: string, en: string) => ({ az, en, ru: en, tr: en, ar: en });
 
@@ -58,6 +63,45 @@ async function seedSysadmin() {
       id: SYSADMIN_PROFILE_ID,
       userId: SYSADMIN_ID,
       contacts: { note: "operator account — not an investor profile" },
+    },
+  });
+}
+
+async function seedOmbudsmanOfficer() {
+  const passwordHash = await bcrypt.hash(OMBUDSMAN_PASSWORD, 12);
+  await prisma.user.upsert({
+    where: { email: OMBUDSMAN_EMAIL },
+    update: { twoFactorEnabled: true, status: UserStatus.ACTIVE },
+    create: {
+      id: OMBUDSMAN_ID,
+      email: OMBUDSMAN_EMAIL,
+      passwordHash,
+      identificationLevel: IdentificationLevel.BASIC,
+      locale: "az",
+      consents: { platform_terms: true },
+      consentVersion: "phase2-demo",
+      consentedAt: new Date(),
+      authProvider: AuthProvider.EMAIL,
+      emailVerifiedAt: new Date(),
+      twoFactorEnabled: true,
+      status: UserStatus.ACTIVE,
+    },
+  });
+  await prisma.userRoleAssignment.deleteMany({ where: { userId: OMBUDSMAN_ID } });
+  await prisma.userRoleAssignment.create({
+    data: {
+      userId: OMBUDSMAN_ID,
+      role: UserRole.OMBUDSMAN_OFFICER,
+      grantedById: SYSADMIN_ID,
+    },
+  });
+  await prisma.profile.upsert({
+    where: { userId: OMBUDSMAN_ID },
+    update: {},
+    create: {
+      id: OMBUDSMAN_PROFILE_ID,
+      userId: OMBUDSMAN_ID,
+      contacts: { note: "Ombudsman officer — internal role, 2FA (NFR-02)" },
     },
   });
 }
@@ -169,6 +213,156 @@ async function seedWorkflow() {
   }
 }
 
+type WorkflowStatusSeed = {
+  internalStatus: CaseInternalStatus;
+  sortOrder: number;
+  slaWorkingDays: number | null;
+  pauseSlaOnThisStatus: boolean;
+  isTerminal: boolean;
+};
+
+type WorkflowTransitionSeed = {
+  from: CaseInternalStatus;
+  to: CaseInternalStatus;
+  requiredRole?: UserRole;
+  requiresReason?: boolean;
+};
+
+async function upsertWorkflow(kind: WorkflowKind, statuses: WorkflowStatusSeed[], transitions: WorkflowTransitionSeed[]) {
+  for (const row of statuses) {
+    await prisma.workflowStatus.upsert({
+      where: {
+        workflow_internalStatus: {
+          workflow: kind,
+          internalStatus: row.internalStatus,
+        },
+      },
+      update: {
+        investorVisibleStatus: INVESTOR_VISIBLE_STATUS[row.internalStatus],
+        sortOrder: row.sortOrder,
+        slaWorkingDays: row.slaWorkingDays,
+        pauseSlaOnThisStatus: row.pauseSlaOnThisStatus,
+        isTerminal: row.isTerminal,
+      },
+      create: {
+        workflow: kind,
+        internalStatus: row.internalStatus,
+        investorVisibleStatus: INVESTOR_VISIBLE_STATUS[row.internalStatus],
+        sortOrder: row.sortOrder,
+        slaWorkingDays: row.slaWorkingDays,
+        pauseSlaOnThisStatus: row.pauseSlaOnThisStatus,
+        isTerminal: row.isTerminal,
+      },
+    });
+  }
+  for (const t of transitions) {
+    await prisma.workflowTransition.upsert({
+      where: {
+        workflow_fromStatus_toStatus: {
+          workflow: kind,
+          fromStatus: t.from,
+          toStatus: t.to,
+        },
+      },
+      update: {
+        requiredRole: t.requiredRole ?? null,
+        requiresReason: t.requiresReason ?? false,
+      },
+      create: {
+        workflow: kind,
+        fromStatus: t.from,
+        toStatus: t.to,
+        requiredRole: t.requiredRole,
+        requiresReason: t.requiresReason ?? false,
+      },
+    });
+  }
+}
+
+async function seedOmbudsmanAftercareWorkflows() {
+  const ombStatuses: WorkflowStatusSeed[] = [
+    { internalStatus: CaseInternalStatus.DRAFT, sortOrder: 10, slaWorkingDays: null, pauseSlaOnThisStatus: false, isTerminal: false },
+    { internalStatus: CaseInternalStatus.SUBMITTED, sortOrder: 20, slaWorkingDays: 0, pauseSlaOnThisStatus: false, isTerminal: false },
+    { internalStatus: CaseInternalStatus.REGISTERED, sortOrder: 30, slaWorkingDays: 1, pauseSlaOnThisStatus: false, isTerminal: false },
+    { internalStatus: CaseInternalStatus.UNDER_INVESTIGATION, sortOrder: 40, slaWorkingDays: 10, pauseSlaOnThisStatus: false, isTerminal: false },
+    { internalStatus: CaseInternalStatus.WAITING_ADDITIONAL_INFO, sortOrder: 50, slaWorkingDays: 10, pauseSlaOnThisStatus: true, isTerminal: false },
+    { internalStatus: CaseInternalStatus.INTER_AGENCY_COORDINATION, sortOrder: 60, slaWorkingDays: 10, pauseSlaOnThisStatus: false, isTerminal: false },
+    { internalStatus: CaseInternalStatus.IN_MEDIATION, sortOrder: 70, slaWorkingDays: 10, pauseSlaOnThisStatus: false, isTerminal: false },
+    { internalStatus: CaseInternalStatus.OPINION_PREPARED, sortOrder: 80, slaWorkingDays: 5, pauseSlaOnThisStatus: false, isTerminal: false },
+    { internalStatus: CaseInternalStatus.OPINION_PENDING_APPROVAL, sortOrder: 90, slaWorkingDays: 3, pauseSlaOnThisStatus: false, isTerminal: false },
+    { internalStatus: CaseInternalStatus.COMPLETED, sortOrder: 100, slaWorkingDays: null, pauseSlaOnThisStatus: false, isTerminal: true },
+    { internalStatus: CaseInternalStatus.REJECTED, sortOrder: 110, slaWorkingDays: null, pauseSlaOnThisStatus: false, isTerminal: true },
+    { internalStatus: CaseInternalStatus.WITHDRAWN, sortOrder: 120, slaWorkingDays: null, pauseSlaOnThisStatus: false, isTerminal: true },
+    { internalStatus: CaseInternalStatus.ARCHIVED, sortOrder: 130, slaWorkingDays: null, pauseSlaOnThisStatus: false, isTerminal: true },
+  ];
+  const ombTransitions: WorkflowTransitionSeed[] = [
+    { from: CaseInternalStatus.DRAFT, to: CaseInternalStatus.SUBMITTED, requiredRole: UserRole.INVESTOR },
+    { from: CaseInternalStatus.SUBMITTED, to: CaseInternalStatus.REGISTERED },
+    { from: CaseInternalStatus.REGISTERED, to: CaseInternalStatus.UNDER_INVESTIGATION, requiredRole: UserRole.OMBUDSMAN_OFFICER },
+    { from: CaseInternalStatus.UNDER_INVESTIGATION, to: CaseInternalStatus.WAITING_ADDITIONAL_INFO, requiredRole: UserRole.OMBUDSMAN_OFFICER },
+    { from: CaseInternalStatus.UNDER_INVESTIGATION, to: CaseInternalStatus.INTER_AGENCY_COORDINATION, requiredRole: UserRole.OMBUDSMAN_OFFICER },
+    { from: CaseInternalStatus.UNDER_INVESTIGATION, to: CaseInternalStatus.IN_MEDIATION, requiredRole: UserRole.OMBUDSMAN_OFFICER },
+    { from: CaseInternalStatus.UNDER_INVESTIGATION, to: CaseInternalStatus.OPINION_PREPARED, requiredRole: UserRole.OMBUDSMAN_OFFICER },
+    { from: CaseInternalStatus.WAITING_ADDITIONAL_INFO, to: CaseInternalStatus.UNDER_INVESTIGATION, requiredRole: UserRole.INVESTOR },
+    { from: CaseInternalStatus.INTER_AGENCY_COORDINATION, to: CaseInternalStatus.UNDER_INVESTIGATION, requiredRole: UserRole.OMBUDSMAN_OFFICER },
+    { from: CaseInternalStatus.INTER_AGENCY_COORDINATION, to: CaseInternalStatus.WAITING_ADDITIONAL_INFO, requiredRole: UserRole.INSTITUTION_REP },
+    { from: CaseInternalStatus.IN_MEDIATION, to: CaseInternalStatus.OPINION_PREPARED, requiredRole: UserRole.OMBUDSMAN_OFFICER },
+    { from: CaseInternalStatus.OPINION_PREPARED, to: CaseInternalStatus.OPINION_PENDING_APPROVAL, requiredRole: UserRole.OMBUDSMAN_OFFICER },
+    { from: CaseInternalStatus.OPINION_PENDING_APPROVAL, to: CaseInternalStatus.OPINION_PREPARED, requiredRole: UserRole.SUPERVISOR, requiresReason: true },
+    { from: CaseInternalStatus.OPINION_PENDING_APPROVAL, to: CaseInternalStatus.COMPLETED, requiredRole: UserRole.SUPERVISOR },
+    { from: CaseInternalStatus.OPINION_PENDING_APPROVAL, to: CaseInternalStatus.REJECTED, requiredRole: UserRole.SUPERVISOR, requiresReason: true },
+    { from: CaseInternalStatus.DRAFT, to: CaseInternalStatus.WITHDRAWN, requiredRole: UserRole.INVESTOR, requiresReason: true },
+    { from: CaseInternalStatus.SUBMITTED, to: CaseInternalStatus.WITHDRAWN, requiredRole: UserRole.INVESTOR, requiresReason: true },
+    { from: CaseInternalStatus.REGISTERED, to: CaseInternalStatus.WITHDRAWN, requiredRole: UserRole.INVESTOR, requiresReason: true },
+    { from: CaseInternalStatus.UNDER_INVESTIGATION, to: CaseInternalStatus.WITHDRAWN, requiredRole: UserRole.INVESTOR, requiresReason: true },
+    { from: CaseInternalStatus.COMPLETED, to: CaseInternalStatus.ARCHIVED },
+    { from: CaseInternalStatus.REJECTED, to: CaseInternalStatus.ARCHIVED },
+    { from: CaseInternalStatus.WITHDRAWN, to: CaseInternalStatus.ARCHIVED },
+  ];
+  await upsertWorkflow(WorkflowKind.OMBUDSMAN, ombStatuses, ombTransitions);
+
+  const aftStatuses: WorkflowStatusSeed[] = [
+    { internalStatus: CaseInternalStatus.DRAFT, sortOrder: 10, slaWorkingDays: null, pauseSlaOnThisStatus: false, isTerminal: false },
+    { internalStatus: CaseInternalStatus.SUBMITTED, sortOrder: 20, slaWorkingDays: 0, pauseSlaOnThisStatus: false, isTerminal: false },
+    { internalStatus: CaseInternalStatus.REGISTERED, sortOrder: 30, slaWorkingDays: 1, pauseSlaOnThisStatus: false, isTerminal: false },
+    { internalStatus: CaseInternalStatus.UNDER_REVIEW, sortOrder: 40, slaWorkingDays: 10, pauseSlaOnThisStatus: false, isTerminal: false },
+    { internalStatus: CaseInternalStatus.WAITING_ADDITIONAL_INFO, sortOrder: 50, slaWorkingDays: 10, pauseSlaOnThisStatus: true, isTerminal: false },
+    { internalStatus: CaseInternalStatus.INTER_AGENCY_COORDINATION, sortOrder: 60, slaWorkingDays: 10, pauseSlaOnThisStatus: false, isTerminal: false },
+    { internalStatus: CaseInternalStatus.NEXT_CONTACT_PLANNED, sortOrder: 70, slaWorkingDays: null, pauseSlaOnThisStatus: true, isTerminal: false },
+    { internalStatus: CaseInternalStatus.IN_MONITORING, sortOrder: 80, slaWorkingDays: null, pauseSlaOnThisStatus: false, isTerminal: false },
+    { internalStatus: CaseInternalStatus.COMPLETED, sortOrder: 90, slaWorkingDays: null, pauseSlaOnThisStatus: false, isTerminal: true },
+    { internalStatus: CaseInternalStatus.REJECTED, sortOrder: 100, slaWorkingDays: null, pauseSlaOnThisStatus: false, isTerminal: true },
+    { internalStatus: CaseInternalStatus.WITHDRAWN, sortOrder: 110, slaWorkingDays: null, pauseSlaOnThisStatus: false, isTerminal: true },
+    { internalStatus: CaseInternalStatus.ARCHIVED, sortOrder: 120, slaWorkingDays: null, pauseSlaOnThisStatus: false, isTerminal: true },
+  ];
+  const aftTransitions: WorkflowTransitionSeed[] = [
+    { from: CaseInternalStatus.DRAFT, to: CaseInternalStatus.SUBMITTED, requiredRole: UserRole.INVESTOR },
+    { from: CaseInternalStatus.SUBMITTED, to: CaseInternalStatus.REGISTERED },
+    { from: CaseInternalStatus.REGISTERED, to: CaseInternalStatus.UNDER_REVIEW, requiredRole: UserRole.CASE_MANAGER },
+    { from: CaseInternalStatus.UNDER_REVIEW, to: CaseInternalStatus.WAITING_ADDITIONAL_INFO, requiredRole: UserRole.CASE_MANAGER },
+    { from: CaseInternalStatus.UNDER_REVIEW, to: CaseInternalStatus.INTER_AGENCY_COORDINATION, requiredRole: UserRole.CASE_MANAGER },
+    { from: CaseInternalStatus.UNDER_REVIEW, to: CaseInternalStatus.NEXT_CONTACT_PLANNED, requiredRole: UserRole.CASE_MANAGER },
+    { from: CaseInternalStatus.UNDER_REVIEW, to: CaseInternalStatus.IN_MONITORING, requiredRole: UserRole.CASE_MANAGER },
+    { from: CaseInternalStatus.UNDER_REVIEW, to: CaseInternalStatus.COMPLETED, requiredRole: UserRole.CASE_MANAGER },
+    { from: CaseInternalStatus.WAITING_ADDITIONAL_INFO, to: CaseInternalStatus.UNDER_REVIEW, requiredRole: UserRole.INVESTOR },
+    { from: CaseInternalStatus.INTER_AGENCY_COORDINATION, to: CaseInternalStatus.UNDER_REVIEW, requiredRole: UserRole.CASE_MANAGER },
+    { from: CaseInternalStatus.INTER_AGENCY_COORDINATION, to: CaseInternalStatus.WAITING_ADDITIONAL_INFO, requiredRole: UserRole.INSTITUTION_REP },
+    { from: CaseInternalStatus.NEXT_CONTACT_PLANNED, to: CaseInternalStatus.UNDER_REVIEW, requiredRole: UserRole.CASE_MANAGER },
+    { from: CaseInternalStatus.NEXT_CONTACT_PLANNED, to: CaseInternalStatus.IN_MONITORING, requiredRole: UserRole.CASE_MANAGER },
+    { from: CaseInternalStatus.IN_MONITORING, to: CaseInternalStatus.NEXT_CONTACT_PLANNED, requiredRole: UserRole.CASE_MANAGER },
+    { from: CaseInternalStatus.IN_MONITORING, to: CaseInternalStatus.UNDER_REVIEW, requiredRole: UserRole.CASE_MANAGER },
+    { from: CaseInternalStatus.IN_MONITORING, to: CaseInternalStatus.COMPLETED, requiredRole: UserRole.CASE_MANAGER },
+    { from: CaseInternalStatus.DRAFT, to: CaseInternalStatus.WITHDRAWN, requiredRole: UserRole.INVESTOR, requiresReason: true },
+    { from: CaseInternalStatus.SUBMITTED, to: CaseInternalStatus.WITHDRAWN, requiredRole: UserRole.INVESTOR, requiresReason: true },
+    { from: CaseInternalStatus.REGISTERED, to: CaseInternalStatus.WITHDRAWN, requiredRole: UserRole.INVESTOR, requiresReason: true },
+    { from: CaseInternalStatus.UNDER_REVIEW, to: CaseInternalStatus.WITHDRAWN, requiredRole: UserRole.INVESTOR, requiresReason: true },
+    { from: CaseInternalStatus.COMPLETED, to: CaseInternalStatus.ARCHIVED },
+    { from: CaseInternalStatus.REJECTED, to: CaseInternalStatus.ARCHIVED },
+    { from: CaseInternalStatus.WITHDRAWN, to: CaseInternalStatus.ARCHIVED },
+  ];
+  await upsertWorkflow(WorkflowKind.AFTERCARE, aftStatuses, aftTransitions);
+}
+
 async function upsertClassification(
   kind: Parameters<typeof prisma.classification.upsert>[0]["create"]["kind"],
   code: string,
@@ -208,8 +402,11 @@ async function seedClassifications() {
   await upsertClassification("INSTITUTION", "economy-ministry", "İqtisadiyyat Nazirliyi", "Ministry of Economy", 1);
   await upsertClassification("INSTITUTION", "azerishiq", "Azərişıq ASC", "Azerishiq OJSC", 2);
   await upsertClassification("INSTITUTION", "state-tax-service", "Dövlət Vergi Xidməti", "State Tax Service", 3);
+  await upsertClassification("INSTITUTION", "dvx", "Dövlət Vergi Xidməti (DVX)", "State Tax Service (DVX)", 6);
   await upsertClassification("INSTITUTION", "asan", "ASAN", "ASAN", 4);
   await upsertClassification("INSTITUTION", "migration-service", "Dövlət Miqrasiya Xidməti", "State Migration Service", 5);
+  await upsertClassification("INSTITUTION", "pilot-bank-a", "Pilot bank A (KYC)", "Pilot bank A (KYC)", 10);
+  await upsertClassification("INSTITUTION", "pilot-bank-b", "Pilot bank B (KYC)", "Pilot bank B (KYC)", 11);
 
   await upsertClassification("DOCUMENT_TYPE", "power-of-attorney", "Etibarnamə", "Power of attorney", 1);
   await upsertClassification("DOCUMENT_TYPE", "business-plan", "Biznes-plan", "Business plan", 2);
@@ -218,43 +415,139 @@ async function seedClassifications() {
 }
 
 async function seedApplicationTypes() {
-  const types = [
+  const types: {
+    code: string;
+    names: ReturnType<typeof names>;
+    identificationLevel: IdentificationLevel;
+    requiresEvaluation: boolean;
+    workflow: WorkflowKind;
+    formSchema: object;
+  }[] = [
     {
       code: "investment_intention",
       names: names("İnvestisiya niyyəti", "Investment intention"),
       identificationLevel: IdentificationLevel.BASIC,
       requiresEvaluation: true,
+      workflow: WorkflowKind.STANDARD,
+      formSchema: { fields: [] },
     },
     {
       code: "project_interest",
       names: names("Konkret layihəyə maraq", "Interest in a listed project"),
       identificationLevel: IdentificationLevel.BASIC,
       requiresEvaluation: true,
+      workflow: WorkflowKind.STANDARD,
+      formSchema: { fields: [] },
     },
     {
       code: "consultation",
       names: names("Konsultasiya", "Consultation"),
       identificationLevel: IdentificationLevel.BASIC,
       requiresEvaluation: false,
+      workflow: WorkflowKind.STANDARD,
+      formSchema: { fields: [] },
     },
     {
       code: "partnership_offer",
       names: names("Tərəfdaşlıq təklifi", "Partnership offer"),
       identificationLevel: IdentificationLevel.BASIC,
       requiresEvaluation: true,
+      workflow: WorkflowKind.STANDARD,
+      formSchema: { fields: [] },
     },
     {
       code: "passport_stage",
       names: names("Pasport mərhələsi müraciəti", "Passport-stage application"),
       identificationLevel: IdentificationLevel.LEGAL,
       requiresEvaluation: true,
+      workflow: WorkflowKind.STANDARD,
+      formSchema: { fields: [] },
+    },
+    {
+      code: "ombudsman",
+      names: names("Ombudsman müraciəti", "Ombudsman application"),
+      identificationLevel: IdentificationLevel.BASIC,
+      requiresEvaluation: false,
+      workflow: WorkflowKind.OMBUDSMAN,
+      formSchema: {
+        fields: [
+          { name: "problemDescription", required: true },
+          { name: "requestedRemedy", required: false },
+          { name: "linkedCaseId", required: false },
+        ],
+      },
+    },
+    {
+      code: "aftercare",
+      names: names("Aftercare müraciəti", "Aftercare application"),
+      identificationLevel: IdentificationLevel.BASIC,
+      requiresEvaluation: false,
+      workflow: WorkflowKind.AFTERCARE,
+      formSchema: {
+        fields: [
+          { name: "category", required: true, values: [
+            "administrative_procedural",
+            "institution_coordination",
+            "expansion",
+            "reinvestment",
+            "permit_licence",
+            "other",
+          ] },
+          { name: "description", required: true },
+          { name: "nextContactDate", required: false },
+        ],
+      },
+    },
+    {
+      code: "company_registration",
+      names: names("Şirkət qeydiyyatı", "Company registration"),
+      identificationLevel: IdentificationLevel.LEGAL,
+      requiresEvaluation: false,
+      workflow: WorkflowKind.STANDARD,
+      formSchema: {
+        fields: [
+          { name: "companyName", required: true },
+          { name: "legalForm", required: true },
+          { name: "founders", required: true },
+        ],
+      },
+    },
+    {
+      code: "bank_kyc",
+      names: names("Bank KYC paketi", "Bank KYC packet"),
+      identificationLevel: IdentificationLevel.LEGAL,
+      requiresEvaluation: false,
+      workflow: WorkflowKind.STANDARD,
+      formSchema: {
+        fields: [
+          { name: "ubo", required: true },
+          { name: "sourceOfFunds", required: true },
+          { name: "fatcaCrs", required: true },
+          { name: "activity", required: true },
+        ],
+      },
     },
   ];
   for (const t of types) {
     await prisma.applicationType.upsert({
       where: { code: t.code },
-      update: t,
-      create: { ...t, workflow: WorkflowKind.STANDARD, isActive: true, formSchema: { fields: [] } },
+      update: {
+        names: t.names,
+        identificationLevel: t.identificationLevel,
+        requiresEvaluation: t.requiresEvaluation,
+        workflow: t.workflow,
+        isActive: true,
+        formSchema: t.formSchema,
+      },
+      create: {
+        code: t.code,
+        names: t.names,
+        identificationLevel: t.identificationLevel,
+        requiresEvaluation: t.requiresEvaluation,
+        workflow: t.workflow,
+        isActive: true,
+        formSchema: t.formSchema,
+      },
     });
   }
 }
@@ -389,6 +682,16 @@ async function seedRuleSets() {
       },
     },
   });
+  await prisma.ruleSet.upsert({
+    where: { kind_version: { kind: RuleSetKind.INACTIVITY_THRESHOLD, version: "1" } },
+    update: { body: { days: 60, source: "DVX activity feed when available (FR-AFT-03)" } },
+    create: {
+      ...common,
+      kind: RuleSetKind.INACTIVITY_THRESHOLD,
+      version: "1",
+      body: { days: 60, source: "DVX activity feed when available (FR-AFT-03)" },
+    },
+  });
 }
 
 async function seedCms() {
@@ -436,6 +739,15 @@ async function seedCms() {
       body: names(
         "Portal qurumları əvəz etmir; investorla qurumlar arasında tək təmas nöqtəsidir. Operator — ASAN; koordinator — İqtisadiyyat Nazirliyi.",
         "The portal does not replace institutions; it is the investor’s single contact point. Operator: ASAN. Coordinator: Ministry of Economy.",
+      ),
+    },
+    {
+      pageKey: "OMB",
+      slug: "ombudsman",
+      title: names("İnvestisiya Ombudsmanı", "Investment Ombudsman"),
+      body: names(
+        "İnvestisiya Ombudsmanı tövsiyə xarakterli rəy verir; qurum qərarını əvəz etmir. «Müraciət et» institusional əsas təsdiqlənəndən sonra aktivləşir (TZ §25.3 bənd 5). Rədd edilmiş case üzrə şikayət Vahid Müraciətdən Ombudsman növü ilə açılır.",
+        "The Investment Ombudsman issues a recommendatory opinion; it does not replace an institution’s decision. Live submit is gated on the institutional basis (TZ §25.3 item 5). A complaint on a rejected case opens an Ombudsman application through Vahid Müraciət.",
       ),
     },
   ];
@@ -490,9 +802,15 @@ async function seedNotificationTemplates() {
     { eventType: "rules.version_changed", mandatory: false, az: "Qayda versiyası dəyişib. Yenidən hesabla təklif olunur.", en: "A rule version changed. Recalculation is offered." },
     { eventType: "procedure.flag_changed", mandatory: false, az: "Prosedurun bayrağı dəyişib.", en: "A procedure flag changed." },
     { eventType: "document.expiring_30_days", mandatory: true, az: "Sənədin etibarlılıq müddətinə 30 gün qalıb.", en: "A document expires in 30 days." },
+    { eventType: "payment.initiated", mandatory: true, az: "Dövlət rüsumu ödənişi başladı: {{number}}.", en: "State-fee payment started: {{number}}." },
+    { eventType: "payment.succeeded", mandatory: true, az: "Dövlət rüsumu ödənildi. Qəbz Sənədlərimdədir.", en: "State fee paid. The receipt is in My documents." },
+    { eventType: "payment.failed", mandatory: true, az: "Ödəniş alınmadı. Səbəb kabinetdədir; yenidən cəhd edin və ya başqa üsul seçin.", en: "Payment failed. The reason is in the cabinet; retry or choose another method." },
+    { eventType: "aftercare.passivity_warning", mandatory: true, az: "Fəaliyyət olmasa da hesabat öhdəliyi davam edir. Seçimləriniz kabinetdədir.", en: "Reporting duties continue even without activity. Choices are in the cabinet." },
+    { eventType: "ombudsman.status_changed", mandatory: true, az: "Ombudsman müraciətinin statusu dəyişdi: {{number}}.", en: "Ombudsman application status changed: {{number}}." },
+    { eventType: "aftercare.status_changed", mandatory: true, az: "Aftercare müraciətinin statusu dəyişdi: {{number}}.", en: "Aftercare application status changed: {{number}}." },
   ];
 
-  const roles = [UserRole.INVESTOR, UserRole.CASE_MANAGER, UserRole.SUPERVISOR];
+  const roles = [UserRole.INVESTOR, UserRole.CASE_MANAGER, UserRole.SUPERVISOR, UserRole.OMBUDSMAN_OFFICER];
   const channels: NotificationChannel[] = [
     NotificationChannel.PORTAL,
     NotificationChannel.EMAIL,
@@ -529,16 +847,110 @@ async function seedNotificationTemplates() {
   }
 }
 
+async function seedPartnersAndFees() {
+  const partners = [
+    {
+      id: "00000000-0000-4000-8000-000000000101",
+      names: names("Hüquqi ünvan xidməti", "Legal address service"),
+      serviceKind: "legal_address",
+      priceAmount: "150.00",
+      priceCurrency: Currency.AZN,
+      durationNote: "12 months",
+      rating: "4.50",
+    },
+    {
+      id: "00000000-0000-4000-8000-000000000102",
+      names: names("Tərcümə", "Translation"),
+      serviceKind: "translation",
+      priceAmount: "40.00",
+      priceCurrency: Currency.AZN,
+      durationNote: "per document",
+      rating: "4.20",
+    },
+    {
+      id: "00000000-0000-4000-8000-000000000103",
+      names: names("Notariat", "Notary"),
+      serviceKind: "notary",
+      priceAmount: "80.00",
+      priceCurrency: Currency.AZN,
+      durationNote: "per act",
+      rating: "4.00",
+    },
+  ];
+  for (const p of partners) {
+    await prisma.partner.upsert({
+      where: { id: p.id },
+      update: {
+        names: p.names,
+        serviceKind: p.serviceKind,
+        priceAmount: p.priceAmount,
+        priceCurrency: p.priceCurrency,
+        durationNote: p.durationNote,
+        rating: p.rating,
+        accreditationStatus: AccreditationStatus.ACTIVE,
+        isActive: true,
+      },
+      create: {
+        ...p,
+        accreditationStatus: AccreditationStatus.ACTIVE,
+        isActive: true,
+      },
+    });
+  }
+
+  const companyRegType = await prisma.applicationType.findUniqueOrThrow({ where: { code: "company_registration" } });
+  const companyRegProc = await prisma.procedure.findUniqueOrThrow({ where: { code: "company_registration" } });
+  await prisma.stateFee.upsert({
+    where: { code: "e_company_registration" },
+    update: {
+      names: names("Elektron şirkət qeydiyyatı rüsumu", "Electronic company-registration state fee"),
+      amount: "0.00",
+      currency: Currency.AZN,
+      procedureId: companyRegProc.id,
+      applicationTypeId: companyRegType.id,
+      isActive: true,
+    },
+    create: {
+      code: "e_company_registration",
+      names: names("Elektron şirkət qeydiyyatı rüsumu", "Electronic company-registration state fee"),
+      amount: "0.00",
+      currency: Currency.AZN,
+      procedureId: companyRegProc.id,
+      applicationTypeId: companyRegType.id,
+      isActive: true,
+    },
+  });
+  await prisma.stateFee.upsert({
+    where: { code: "incentive_certificate_state_fee" },
+    update: {
+      names: names("İnvestisiya təşviqi sənədi rüsumu (nümunə)", "Incentive-certificate state fee (sample)"),
+      amount: "0.00",
+      currency: Currency.AZN,
+      isActive: true,
+    },
+    create: {
+      code: "incentive_certificate_state_fee",
+      names: names("İnvestisiya təşviqi sənədi rüsumu (nümunə)", "Incentive-certificate state fee (sample)"),
+      amount: "0.00",
+      currency: Currency.AZN,
+      isActive: true,
+    },
+  });
+}
+
 async function main() {
   await seedSysadmin();
+  await seedOmbudsmanOfficer();
   await seedWorkflow();
+  await seedOmbudsmanAftercareWorkflows();
   await seedClassifications();
   await seedApplicationTypes();
   await seedProcedures();
   await seedRuleSets();
   await seedCms();
   await seedNotificationTemplates();
-  console.log("Seed complete (sysadmin, Standart workflow, classifications, procedures, rule sets, CMS, templates).");
+  await seedPartnersAndFees();
+  console.log("Seed complete (sysadmin, ombudsman officer, STANDARD/OMB/AFT workflows, types, banks/DVX, partners, state fees, CMS).");
 }
 
 main()
