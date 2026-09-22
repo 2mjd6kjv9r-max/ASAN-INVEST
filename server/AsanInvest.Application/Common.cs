@@ -41,6 +41,7 @@ public interface IAppDbContext
     DbSet<PartnerSelection> PartnerSelections { get; }
     DbSet<IntegrationMessage> IntegrationMessages { get; }
     DbSet<StateFee> StateFees { get; }
+    DbSet<FlagChangeEvent> FlagChangeEvents { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
     Task<string> NextApplicationPublicNumberAsync(CancellationToken cancellationToken = default);

@@ -45,6 +45,7 @@ public sealed class AsanInvestDbContext : DbContext, Application.IAppDbContext
     public DbSet<PartnerSelection> PartnerSelections => Set<PartnerSelection>();
     public DbSet<IntegrationMessage> IntegrationMessages => Set<IntegrationMessage>();
     public DbSet<StateFee> StateFees => Set<StateFee>();
+    public DbSet<FlagChangeEvent> FlagChangeEvents => Set<FlagChangeEvent>();
 
     public async Task<string> NextApplicationPublicNumberAsync(CancellationToken cancellationToken = default)
     {
@@ -93,6 +94,8 @@ public sealed class AsanInvestDbContext : DbContext, Application.IAppDbContext
         modelBuilder.HasPostgresEnum<AccreditationStatus>("accreditation_status");
         modelBuilder.HasPostgresEnum<ApplicationSource>("application_source");
         modelBuilder.HasPostgresEnum<DocumentLinkObject>("document_link_object");
+        modelBuilder.HasPostgresEnum<BankChannel>("bank_channel");
+        modelBuilder.HasPostgresEnum<EResidencyStatus>("e_residency_status");
 
         modelBuilder.Entity<User>(e =>
         {
@@ -115,9 +118,15 @@ public sealed class AsanInvestDbContext : DbContext, Application.IAppDbContext
             e.Property(x => x.PepSanctionsStatus).HasColumnName("pep_sanctions_status");
             e.Property(x => x.PepSanctionsCheckedAt).HasColumnName("pep_sanctions_checked_at");
             e.Property(x => x.PepSanctionsListVersion).HasColumnName("pep_sanctions_list_version");
+            e.Property(x => x.VirtualFin).HasColumnName("virtual_fin");
+            e.Property(x => x.Fin).HasColumnName("fin");
+            e.Property(x => x.EsignIssuer).HasColumnName("esign_issuer");
+            e.Property(x => x.IdentificationUpgradedAt).HasColumnName("identification_upgraded_at");
             e.Property(x => x.CreatedAt).HasColumnName("created_at");
             e.Property(x => x.UpdatedAt).HasColumnName("updated_at");
             e.HasIndex(x => x.Email).IsUnique();
+            e.HasIndex(x => x.VirtualFin).IsUnique();
+            e.HasIndex(x => x.Fin).IsUnique();
             e.HasOne(x => x.Institution).WithMany().HasForeignKey(x => x.InstitutionId).OnDelete(DeleteBehavior.SetNull);
             e.HasOne(x => x.Profile).WithOne(p => p.User).HasForeignKey<Profile>(p => p.UserId);
         });
@@ -154,6 +163,7 @@ public sealed class AsanInvestDbContext : DbContext, Application.IAppDbContext
             e.Property(x => x.DvxRegistrationStatus).HasColumnName("dvx_registration_status");
             e.Property(x => x.DvxRegisteredAt).HasColumnName("dvx_registered_at");
             e.Property(x => x.CompanyLegalForm).HasColumnName("company_legal_form");
+            e.Property(x => x.EResidencyStatus).HasColumnName("e_residency_status");
             e.Property(x => x.UboStructure).HasColumnName("ubo_structure").HasColumnType("jsonb");
             e.Property(x => x.Version).HasColumnName("version");
             e.Property(x => x.CreatedAt).HasColumnName("created_at");
@@ -264,6 +274,7 @@ public sealed class AsanInvestDbContext : DbContext, Application.IAppDbContext
             e.Property(x => x.WithdrawalReason).HasColumnName("withdrawal_reason");
             e.Property(x => x.SubmittedAt).HasColumnName("submitted_at");
             e.Property(x => x.LinkedCaseId).HasColumnName("linked_case_id");
+            e.Property(x => x.BankChannel).HasColumnName("bank_channel");
             e.Property(x => x.CreatedAt).HasColumnName("created_at");
             e.Property(x => x.UpdatedAt).HasColumnName("updated_at");
             e.HasOne(x => x.Type).WithMany().HasForeignKey(x => x.TypeId);
@@ -450,6 +461,7 @@ public sealed class AsanInvestDbContext : DbContext, Application.IAppDbContext
             e.Property(x => x.LegalBasis).HasColumnName("legal_basis");
             e.Property(x => x.EServiceUrl).HasColumnName("e_service_url");
             e.Property(x => x.ApplicationTypeId).HasColumnName("application_type_id");
+            e.Property(x => x.IntegrationCode).HasColumnName("integration_code");
             e.Property(x => x.SortOrder).HasColumnName("sort_order");
             e.Property(x => x.IsActive).HasColumnName("is_active");
             e.Property(x => x.CreatedAt).HasColumnName("created_at");
@@ -679,6 +691,21 @@ public sealed class AsanInvestDbContext : DbContext, Application.IAppDbContext
             e.HasIndex(x => x.Code).IsUnique();
             e.HasOne(x => x.Procedure).WithMany(p => p.StateFees).HasForeignKey(x => x.ProcedureId).OnDelete(DeleteBehavior.SetNull);
             e.HasOne(x => x.ApplicationType).WithMany(t => t.StateFees).HasForeignKey(x => x.ApplicationTypeId).OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<FlagChangeEvent>(e =>
+        {
+            e.ToTable("flag_change_events");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id");
+            e.Property(x => x.ProcedureId).HasColumnName("procedure_id");
+            e.Property(x => x.FromFlag).HasColumnName("from_flag");
+            e.Property(x => x.ToFlag).HasColumnName("to_flag");
+            e.Property(x => x.ActorUserId).HasColumnName("actor_user_id");
+            e.Property(x => x.NotifiedCount).HasColumnName("notified_count");
+            e.Property(x => x.OccurredAt).HasColumnName("occurred_at");
+            e.HasOne(x => x.Procedure).WithMany(p => p.FlagChangeEvents).HasForeignKey(x => x.ProcedureId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.Actor).WithMany(u => u.FlagChangeEvents).HasForeignKey(x => x.ActorUserId).OnDelete(DeleteBehavior.SetNull);
         });
     }
 }

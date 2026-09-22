@@ -52,6 +52,8 @@ public static class NpgsqlSetup
         builder.MapEnum<AccreditationStatus>("accreditation_status", names);
         builder.MapEnum<ApplicationSource>("application_source", names);
         builder.MapEnum<DocumentLinkObject>("document_link_object", names);
+        builder.MapEnum<BankChannel>("bank_channel", names);
+        builder.MapEnum<EResidencyStatus>("e_residency_status", names);
         return builder.Build();
     }
 }

@@ -2,7 +2,7 @@
 
 Owned by the Database Specialist (`server/prisma/`). EF Core maps the same tables from `AsanInvest.Infrastructure/Persistence`.
 
-Source of truth: `ASAN_Invest_TZ_v4.0.md` §4.3, `docs/PLAN.md` §3, and Phase 2 additions in `docs/PLAN-PHASE2.md` §2. The TZ wins on disagreement.
+Source of truth: `ASAN_Invest_TZ_v4.0.md` §4.3, `docs/PLAN.md` §3, Phase 2 in `docs/PLAN-PHASE2.md` §2, and Phase 3 in `docs/PLAN-PHASE3.md` §2. The TZ wins on disagreement.
 
 Prisma migrations remain the apply path. Do not create a parallel table set.
 
@@ -26,24 +26,31 @@ npm run db:seed
 npm run db:verify
 ```
 
-## `ALTER TYPE ... ADD VALUE` (Phase 2)
+## `ALTER TYPE ... ADD VALUE` (Phase 2–3)
 
-Phase 2 appends labels to existing PostgreSQL enums; it does not rename or drop Phase 1 values.
+Phase 2 and Phase 3 append labels to existing PostgreSQL enums; they do not rename or drop earlier values.
 
 | Enum | Added labels |
 | --- | --- |
-| `workflow_kind` | `OMBUDSMAN`, `AFTERCARE` |
-| `case_internal_status` | `UNDER_INVESTIGATION`, `IN_MEDIATION`, `OPINION_PREPARED`, `OPINION_PENDING_APPROVAL`, `NEXT_CONTACT_PLANNED`, `IN_MONITORING` |
+| `workflow_kind` | `OMBUDSMAN`, `AFTERCARE` (Phase 2) |
+| `case_internal_status` | TZ §14.2 extras (Phase 2) |
+| `auth_provider` | `E_NONRESIDENT`, `FOREIGN_ESIGN` (Phase 3) |
 
-New enums created in Phase 2 (not alters): `payment_status`, `reform_status`, `accreditation_status`.
+New enums: Phase 2 `payment_status`, `reform_status`, `accreditation_status`; Phase 3 `bank_channel`, `e_residency_status`.
 
 PostgreSQL behaviour:
 
 - **11 and earlier:** more than one `ADD VALUE` cannot run in a single transaction. Split migrations.
 - **12–14:** `ADD VALUE` may run inside a transaction, but the new label cannot be *used* until after commit.
-- **15+ (this repo):** Docker Compose uses `postgres:16-alpine`. New labels may be added and used in the same transaction. The Phase 2 migration therefore keeps a single transactional script.
+- **15+ (this repo):** Docker Compose uses `postgres:16-alpine`. New labels may be added and used in the same transaction.
 
 `payments.status` is converted from free text (`'external'`) to `payment_status` with `USING` — the column is not dropped.
+
+`users.virtual_fin` (TZ §2) is unique when present and **does not** change resident / non-resident labelling. `users.fin` is unique when present (resident ASAN Login / SİMA).
+
+`electricity_connection` is seeded `PLANNED` with `integration_code = electricity`. It must not claim `ONLINE` until a live adapter exists.
+
+Flag promotions write append-only `flag_change_events` (FR-FLAG-03).
 
 ## Integrity the database enforces
 
@@ -58,6 +65,8 @@ PostgreSQL behaviour:
 | TZ §21.1 | Triggers: `integration_messages` cannot be updated or deleted |
 | FR-ROUTE-01 | `NUMERIC(18,2)` money; `currency` enum AZN / USD / EUR |
 | TZ §20 | State-fee rows (`state_fees`, `payments.kind = STATE_FEE`) stay separate from partner prices |
+| TZ §2 | `users.virtual_fin` unique if present; not a residency flag |
+| FR-FLAG-03 | `flag_change_events` cannot be updated or deleted |
 
 `state_fees` is the FR-ADM-10 catalogue (in-app checkout). It is additive; `procedures.fee_amount` is unchanged.
 

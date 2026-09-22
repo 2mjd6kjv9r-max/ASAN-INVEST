@@ -62,6 +62,36 @@ async function main() {
   });
   record("Phase 2 application types seeded", types.length === 4, `count=${types.length}`);
 
+  const phase3Types = await prisma.applicationType.findMany({
+    where: { code: { in: ["visa", "customs_incentive", "utility_connection", "e_residency"] } },
+  });
+  record("Phase 3 application types seeded", phase3Types.length === 4, `count=${phase3Types.length}`);
+
+  const electricity = await prisma.procedure.findUniqueOrThrow({ where: { code: "electricity_connection" } });
+  record(
+    "electricity_connection is PLANNED (no live adapter)",
+    electricity.flag === "PLANNED" && electricity.integrationCode === "electricity",
+    `flag=${electricity.flag} integration=${electricity.integrationCode}`,
+  );
+
+  const planCodes = [
+    "visa",
+    "customs_incentive",
+    "gas_connection",
+    "water_connection",
+    "work_permit",
+    "e_notary",
+    "construction_permit",
+    "zoning_prequery",
+    "e_residency",
+  ];
+  const planProcs = await prisma.procedure.findMany({ where: { code: { in: planCodes } } });
+  record(
+    "Phase 3 PLAN procedures seeded",
+    planProcs.length === planCodes.length && planProcs.every((p) => p.flag === "PLANNED"),
+    `count=${planProcs.length}`,
+  );
+
   const banks = await prisma.classification.count({
     where: { kind: "INSTITUTION", code: { in: ["pilot-bank-a", "pilot-bank-b"] } },
   });
@@ -96,6 +126,36 @@ async function main() {
   record("partner_selections table", await tableExists("partner_selections"));
   record("integration_messages table", await tableExists("integration_messages"));
   record("state_fees table", await tableExists("state_fees"));
+  record("flag_change_events table", await tableExists("flag_change_events"));
+
+  const authProviders = await prisma.$queryRaw<Array<{ enumlabel: string }>>`
+    SELECT e.enumlabel
+    FROM pg_type t
+    JOIN pg_enum e ON t.oid = e.enumtypid
+    WHERE t.typname = 'auth_provider'
+  `;
+  const authLabels = new Set(authProviders.map((r) => r.enumlabel));
+  record(
+    "auth_provider has E_NONRESIDENT and FOREIGN_ESIGN",
+    authLabels.has("E_NONRESIDENT") && authLabels.has("FOREIGN_ESIGN"),
+  );
+
+  const virtualFinIdx = await prisma.$queryRaw<Array<{ exists: boolean }>>`
+    SELECT EXISTS (
+      SELECT 1 FROM pg_indexes WHERE indexname = 'users_virtual_fin_key'
+    ) AS exists
+  `;
+  record("unique users.virtual_fin", virtualFinIdx[0]?.exists === true);
+
+  const finIdx = await prisma.$queryRaw<Array<{ exists: boolean }>>`
+    SELECT EXISTS (
+      SELECT 1 FROM pg_indexes WHERE indexname = 'users_fin_key'
+    ) AS exists
+  `;
+  record("unique users.fin", finIdx[0]?.exists === true);
+
+  const eResPage = await prisma.cmsContent.findUnique({ where: { slug: "e-residency" } });
+  record("e-residency CMS page published", eResPage?.status === "PUBLISHED");
 
   const paymentEnum = await prisma.$queryRaw<Array<{ exists: boolean }>>`
     SELECT EXISTS (
@@ -267,6 +327,50 @@ async function main() {
     () => prisma.integrationMessage.delete({ where: { id: integration.id } }),
     "append-only",
   );
+
+  const flagEvent = await prisma.flagChangeEvent.create({
+    data: {
+      procedureId: electricity.id,
+      fromFlag: "ONLINE",
+      toFlag: "PLANNED",
+      actorUserId: creator.id,
+      notifiedCount: 0,
+    },
+  });
+  await expectReject(
+    "flag_change_events update forbidden",
+    () =>
+      prisma.flagChangeEvent.update({
+        where: { id: flagEvent.id },
+        data: { notifiedCount: 99 },
+      }),
+    "append-only",
+  );
+  await expectReject(
+    "flag_change_events delete forbidden",
+    () => prisma.flagChangeEvent.delete({ where: { id: flagEvent.id } }),
+    "append-only",
+  );
+
+  await prisma.user.update({
+    where: { id: creator.id },
+    data: { virtualFin: "VF-INTEGRITY-1" },
+  });
+  await expectReject(
+    "virtual_fin is unique",
+    () =>
+      prisma.user.create({
+        data: {
+          email: "virtual-fin-dup@asaninvest.local",
+          virtualFin: "VF-INTEGRITY-1",
+        },
+      }),
+    "virtual_fin",
+  );
+  await prisma.user.update({
+    where: { id: creator.id },
+    data: { virtualFin: null },
+  });
 
   await prisma.application.delete({ where: { id: application.id } });
   await prisma.project.delete({ where: { id: project.id } });

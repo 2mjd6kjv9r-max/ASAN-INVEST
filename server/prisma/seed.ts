@@ -407,6 +407,13 @@ async function seedClassifications() {
   await upsertClassification("INSTITUTION", "migration-service", "Dövlət Miqrasiya Xidməti", "State Migration Service", 5);
   await upsertClassification("INSTITUTION", "pilot-bank-a", "Pilot bank A (KYC)", "Pilot bank A (KYC)", 10);
   await upsertClassification("INSTITUTION", "pilot-bank-b", "Pilot bank B (KYC)", "Pilot bank B (KYC)", 11);
+  await upsertClassification("INSTITUTION", "dxa", "Dövlət Xidmətləri Agentliyi (ASAN Viza)", "State Agency for Public Service (ASAN Visa)", 12);
+  await upsertClassification("INSTITUTION", "dgk", "Dövlət Gömrük Komitəsi", "State Customs Committee", 13);
+  await upsertClassification("INSTITUTION", "azeriqaz", "Azəriqaz", "Azerigaz", 14);
+  await upsertClassification("INSTITUTION", "water-resources", "Su Ehtiyatları Agentliyi", "Water Resources Agency", 15);
+  await upsertClassification("INSTITUTION", "urban-planning", "Dövlət Şəhərsalma və Arxitektura Komitəsi", "State Committee on Urban Planning and Architecture", 16);
+  await upsertClassification("INSTITUTION", "emdx", "Əmlak Məsələləri Dövlət Xidməti", "State Service on Property Issues", 17);
+  await upsertClassification("INSTITUTION", "justice-ministry", "Ədliyyə Nazirliyi", "Ministry of Justice", 18);
 
   await upsertClassification("DOCUMENT_TYPE", "power-of-attorney", "Etibarnamə", "Power of attorney", 1);
   await upsertClassification("DOCUMENT_TYPE", "business-plan", "Biznes-plan", "Business plan", 2);
@@ -524,8 +531,41 @@ async function seedApplicationTypes() {
           { name: "sourceOfFunds", required: true },
           { name: "fatcaCrs", required: true },
           { name: "activity", required: true },
+          { name: "bankChannel", required: false, values: ["PHYSICAL_SIGNATURE", "REMOTE_ESIGN"] },
         ],
       },
+    },
+    {
+      code: "visa",
+      names: names("ASAN Viza", "ASAN Visa"),
+      identificationLevel: IdentificationLevel.BASIC,
+      requiresEvaluation: false,
+      workflow: WorkflowKind.STANDARD,
+      formSchema: { fields: [{ name: "travelPurpose", required: false }] },
+    },
+    {
+      code: "customs_incentive",
+      names: names("Gömrük güzəşti (idxal)", "Customs incentive (import)"),
+      identificationLevel: IdentificationLevel.BASIC,
+      requiresEvaluation: false,
+      workflow: WorkflowKind.STANDARD,
+      formSchema: { fields: [{ name: "equipmentDescription", required: true }] },
+    },
+    {
+      code: "utility_connection",
+      names: names("Kommunal qoşulma", "Utility connection"),
+      identificationLevel: IdentificationLevel.BASIC,
+      requiresEvaluation: false,
+      workflow: WorkflowKind.STANDARD,
+      formSchema: { fields: [{ name: "utilityKind", required: true, values: ["electricity", "gas", "water"] }] },
+    },
+    {
+      code: "e_residency",
+      names: names("E-rezidentlik marağı", "E-residency interest"),
+      identificationLevel: IdentificationLevel.BASIC,
+      requiresEvaluation: false,
+      workflow: WorkflowKind.STANDARD,
+      formSchema: { fields: [{ name: "motivation", required: false }] },
     },
   ];
   for (const t of types) {
@@ -565,9 +605,34 @@ async function seedProcedures() {
   const migration = await prisma.classification.findUniqueOrThrow({
     where: { kind_code: { kind: "INSTITUTION", code: "migration-service" } },
   });
+  const dxa = await prisma.classification.findUniqueOrThrow({
+    where: { kind_code: { kind: "INSTITUTION", code: "dxa" } },
+  });
+  const dgk = await prisma.classification.findUniqueOrThrow({
+    where: { kind_code: { kind: "INSTITUTION", code: "dgk" } },
+  });
+  const azeriqaz = await prisma.classification.findUniqueOrThrow({
+    where: { kind_code: { kind: "INSTITUTION", code: "azeriqaz" } },
+  });
+  const water = await prisma.classification.findUniqueOrThrow({
+    where: { kind_code: { kind: "INSTITUTION", code: "water-resources" } },
+  });
+  const urban = await prisma.classification.findUniqueOrThrow({
+    where: { kind_code: { kind: "INSTITUTION", code: "urban-planning" } },
+  });
+  const justice = await prisma.classification.findUniqueOrThrow({
+    where: { kind_code: { kind: "INSTITUTION", code: "justice-ministry" } },
+  });
+  const asan = await prisma.classification.findUniqueOrThrow({
+    where: { kind_code: { kind: "INSTITUTION", code: "asan" } },
+  });
   const passportType = await prisma.applicationType.findUniqueOrThrow({
     where: { code: "passport_stage" },
   });
+  const visaType = await prisma.applicationType.findUniqueOrThrow({ where: { code: "visa" } });
+  const customsType = await prisma.applicationType.findUniqueOrThrow({ where: { code: "customs_incentive" } });
+  const utilityType = await prisma.applicationType.findUniqueOrThrow({ where: { code: "utility_connection" } });
+  const eResidencyType = await prisma.applicationType.findUniqueOrThrow({ where: { code: "e_residency" } });
 
   const procedures = [
     {
@@ -590,11 +655,16 @@ async function seedProcedures() {
     },
     {
       code: "electricity_connection",
-      names: names("Elektrik qoşulması", "Electricity connection"),
+      names: names(
+        "Elektrik qoşulması (PLAN — canlı Azərişıq adapteri yoxdur)",
+        "Electricity connection (PLAN — no live Azerishiq adapter)",
+      ),
       institutionId: azerishiq.id,
-      flag: Flag.ONLINE,
+      flag: Flag.PLANNED,
       expectedDurationDays: 10,
-      applicationTypeId: passportType.id,
+      applicationTypeId: utilityType.id,
+      integrationCode: "electricity",
+      legalBasis: "TZ §22 kommunal. Seed previously marked ONLINE; no live API spec is in-repo.",
       sortOrder: 30,
     },
     {
@@ -603,6 +673,8 @@ async function seedProcedures() {
       institutionId: economy.id,
       flag: Flag.PHYSICAL,
       expectedDurationDays: 10,
+      integrationCode: "remote_bank",
+      legalBasis: "Remote e-sign channel is PLAN until TZ §22.1 / Mərkəzi Bank. Platform does not open accounts.",
       sortOrder: 40,
     },
     {
@@ -612,7 +684,101 @@ async function seedProcedures() {
       flag: Flag.PLANNED,
       expectedDurationDays: 20,
       applicationTypeId: passportType.id,
+      integrationCode: "migration",
+      legalBasis: "TZ §25.3 item 6: biometrics stay PHYSICAL until the coordinator answers.",
       sortOrder: 50,
+    },
+    {
+      code: "visa",
+      names: names("ASAN Viza (PLAN)", "ASAN Visa (PLAN)"),
+      institutionId: dxa.id,
+      flag: Flag.PLANNED,
+      expectedDurationDays: 15,
+      applicationTypeId: visaType.id,
+      integrationCode: "visa",
+      sortOrder: 60,
+    },
+    {
+      code: "customs_incentive",
+      names: names("Gömrük güzəşti — idxal (PLAN)", "Customs incentive — import (PLAN)"),
+      institutionId: dgk.id,
+      flag: Flag.PLANNED,
+      expectedDurationDays: 20,
+      applicationTypeId: customsType.id,
+      integrationCode: "customs",
+      sortOrder: 70,
+    },
+    {
+      code: "gas_connection",
+      names: names("Qaz qoşulması (PLAN)", "Gas connection (PLAN)"),
+      institutionId: azeriqaz.id,
+      flag: Flag.PLANNED,
+      expectedDurationDays: 15,
+      applicationTypeId: utilityType.id,
+      integrationCode: "gas",
+      sortOrder: 80,
+    },
+    {
+      code: "water_connection",
+      names: names("Su qoşulması (PLAN)", "Water connection (PLAN)"),
+      institutionId: water.id,
+      flag: Flag.PLANNED,
+      expectedDurationDays: 15,
+      applicationTypeId: utilityType.id,
+      integrationCode: "water",
+      sortOrder: 90,
+    },
+    {
+      code: "work_permit",
+      names: names("İş icazəsi (PLAN)", "Work permit (PLAN)"),
+      institutionId: migration.id,
+      flag: Flag.PLANNED,
+      expectedDurationDays: 20,
+      applicationTypeId: passportType.id,
+      integrationCode: "migration",
+      legalBasis: "Biometrics remain PHYSICAL until TZ §25.3 item 6. Do not claim remote biometrics.",
+      sortOrder: 100,
+    },
+    {
+      code: "e_notary",
+      names: names("Elektron notariat (PLAN)", "Electronic notary (PLAN)"),
+      institutionId: justice.id,
+      flag: Flag.PLANNED,
+      expectedDurationDays: 10,
+      integrationCode: "notary",
+      sortOrder: 110,
+    },
+    {
+      code: "construction_permit",
+      names: names("Tikinti icazəsi (PLAN)", "Construction permit (PLAN)"),
+      institutionId: urban.id,
+      flag: Flag.PLANNED,
+      expectedDurationDays: 30,
+      applicationTypeId: passportType.id,
+      integrationCode: "planning",
+      legalBasis: "FR-PROJ-06: do not invent FAR/height numbers.",
+      sortOrder: 120,
+    },
+    {
+      code: "zoning_prequery",
+      names: names("Zonalaşdırma sorğusu (PLAN)", "Zoning pre-query (PLAN)"),
+      institutionId: urban.id,
+      flag: Flag.PLANNED,
+      expectedDurationDays: 15,
+      applicationTypeId: passportType.id,
+      integrationCode: "planning",
+      sortOrder: 130,
+    },
+    {
+      code: "e_residency",
+      names: names("E-rezidentlik (PLAN — qanun qüvvədə deyil)", "E-residency (PLAN — not in force)"),
+      institutionId: asan.id,
+      flag: Flag.PLANNED,
+      expectedDurationDays: null,
+      applicationTypeId: eResidencyType.id,
+      integrationCode: "e_nonresident",
+      legalBasis: "TZ §22.1 / §25.1. GRANTED only after legislation via back-office, never a stub.",
+      sortOrder: 140,
     },
   ];
 
@@ -748,6 +914,15 @@ async function seedCms() {
       body: names(
         "İnvestisiya Ombudsmanı tövsiyə xarakterli rəy verir; qurum qərarını əvəz etmir. «Müraciət et» institusional əsas təsdiqlənəndən sonra aktivləşir (TZ §25.3 bənd 5). Rədd edilmiş case üzrə şikayət Vahid Müraciətdən Ombudsman növü ilə açılır.",
         "The Investment Ombudsman issues a recommendatory opinion; it does not replace an institution’s decision. Live submit is gated on the institutional basis (TZ §25.3 item 5). A complaint on a rejected case opens an Ombudsman application through Vahid Müraciət.",
+      ),
+    },
+    {
+      pageKey: "ERES",
+      slug: "e-residency",
+      title: names("E-rezidentlik", "E-residency"),
+      body: names(
+        "E-rezidentlik statusu qanunvericilikdə hələ qüvvədə deyil (TZ §22.1). Bu səhifə PLAN bayrağı ilə məlumat üçündür; maraq bildirişi Vahid Müraciətdən qəbul olunur. Platforma e-rezident statusu vermir.",
+        "E-residency is not in force (TZ §22.1). This page is informational with a PLAN flag; interest is accepted through Vahid Müraciət. The platform does not grant e-resident status.",
       ),
     },
   ];
@@ -950,7 +1125,7 @@ async function main() {
   await seedCms();
   await seedNotificationTemplates();
   await seedPartnersAndFees();
-  console.log("Seed complete (sysadmin, ombudsman officer, STANDARD/OMB/AFT workflows, types, banks/DVX, partners, state fees, CMS).");
+  console.log("Seed complete (Phase 1–3 catalogue: PLAN §22 shells, electricity retagged PLANNED, e-residency CMS).");
 }
 
 main()

@@ -1,6 +1,6 @@
-// ASAN Invest schema — TZ §4.3 / docs/PLAN.md §3 / docs/PLAN-PHASE2.md §2.
+// ASAN Invest schema — TZ §4.3 / docs/PLAN.md §3 / docs/PLAN-PHASE2.md §2 / docs/PLAN-PHASE3.md §2.
 // Table names are English snake_case; TZ terms stay in comments.
-// Phase 2 adds Ombudsman / Aftercare statuses (TZ §14.2), partners, systemic problems, payment provider fields.
+// Phase 3 adds e-nonresident / foreign e-sign channels, PLAN §22 shells, flag-change audit.
 
 generator client {
   provider = "prisma-client-js"
@@ -148,10 +148,12 @@ enum UserStatus {
   @@map("user_status")
 }
 
-/// PLAN §3.2 users.auth_provider
+/// PLAN §3.2 users.auth_provider. Phase 3: e-qeyri-rezident and foreign e-sign (PLAN until specs exist).
 enum AuthProvider {
   EMAIL
   ASAN_LOGIN
+  E_NONRESIDENT
+  FOREIGN_ESIGN
 
   @@map("auth_provider")
 }
@@ -244,6 +246,24 @@ enum AccreditationStatus {
   @@map("accreditation_status")
 }
 
+/// Remote bank channel (TZ §22.1). REMOTE_ESIGN stays PLAN until Mərkəzi Bank agreement.
+enum BankChannel {
+  PHYSICAL_SIGNATURE
+  REMOTE_ESIGN
+
+  @@map("bank_channel")
+}
+
+/// E-rezidentlik. GRANTED only via back-office after legislation — never a stub.
+enum EResidencyStatus {
+  NONE
+  APPLIED
+  PLAN_PENDING
+  GRANTED
+
+  @@map("e_residency_status")
+}
+
 /// FR-APP-06
 enum ApplicationSource {
   PASSPORT_STAGE
@@ -284,6 +304,12 @@ model User {
   pepSanctionsStatus   String?              @map("pep_sanctions_status")
   pepSanctionsCheckedAt DateTime?           @map("pep_sanctions_checked_at") @db.Timestamptz(6)
   pepSanctionsListVersion String?           @map("pep_sanctions_list_version")
+  /// TZ §2: stored if issued; does **not** change resident / non-resident labelling.
+  virtualFin           String?              @unique @map("virtual_fin")
+  /// Resident ASAN Login / SİMA FIN (FR-AUTH-02) when live.
+  fin                  String?              @unique
+  esignIssuer          String?              @map("esign_issuer")
+  identificationUpgradedAt DateTime?        @map("identification_upgraded_at") @db.Timestamptz(6)
   createdAt            DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt            DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
 
@@ -306,6 +332,7 @@ model User {
   cmsOwned               CmsContent[]
   guestSessionsConverted GuestSession[]
   partnerSelections      PartnerSelection[]
+  flagChangeEvents       FlagChangeEvent[]
 
   @@index([institutionId])
   @@index([status])
@@ -346,6 +373,8 @@ model Profile {
   dvxRegistrationStatus String?  @map("dvx_registration_status")
   dvxRegisteredAt       DateTime? @map("dvx_registered_at") @db.Timestamptz(6)
   companyLegalForm      String?   @map("company_legal_form")
+  /// E-rezidentlik. GRANTED is never set by a PLAN stub (TZ §22.1).
+  eResidencyStatus      EResidencyStatus @default(NONE) @map("e_residency_status")
   uboStructure    Json?    @map("ubo_structure")
   version         Int      @default(1)
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -498,6 +527,8 @@ model Application {
   submittedAt     DateTime?         @map("submitted_at") @db.Timestamptz(6)
   /// FR-OMB-06 / WF-06 — rejected case that opened this Ombudsman application.
   linkedCaseId    String?           @map("linked_case_id") @db.Uuid
+  /// Bank KYC / remote-account channel. Null for non-bank applications.
+  bankChannel     BankChannel?      @map("bank_channel")
   createdAt       DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
 
@@ -815,6 +846,8 @@ model Procedure {
   legalBasis              String?   @map("legal_basis")
   eServiceUrl             String?   @map("e_service_url")
   applicationTypeId       String?   @map("application_type_id") @db.Uuid
+  /// Adapter key: asan_login, e_nonresident, visa, customs, electricity, gas, water, migration, notary, planning, cadastre, remote_bank.
+  integrationCode         String?   @map("integration_code")
   sortOrder               Int       @default(0) @map("sort_order")
   isActive                Boolean   @default(true) @map("is_active")
   createdAt               DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -828,8 +861,11 @@ model Procedure {
   dependencies    ProcedureDependency[] @relation("ProcedureDepends")
   dependents      ProcedureDependency[] @relation("ProcedureDependedOn")
 
+  flagChangeEvents FlagChangeEvent[]
+
   @@index([institutionId])
   @@index([flag])
+  @@index([integrationCode])
   @@map("procedures")
 }
 
@@ -1089,5 +1125,23 @@ model StateFee {
   applicationType ApplicationType? @relation(fields: [applicationTypeId], references: [id], onDelete: SetNull)
 
   @@map("state_fees")
+}
+
+/// FR-FLAG-03 — procedure flag promotion audit. Append-only.
+model FlagChangeEvent {
+  id             String   @id @default(uuid()) @db.Uuid
+  procedureId    String   @map("procedure_id") @db.Uuid
+  fromFlag       Flag     @map("from_flag")
+  toFlag         Flag     @map("to_flag")
+  actorUserId    String?  @map("actor_user_id") @db.Uuid
+  notifiedCount  Int      @default(0) @map("notified_count")
+  occurredAt     DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
+
+  procedure Procedure @relation(fields: [procedureId], references: [id], onDelete: Restrict)
+  actor     User?     @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([procedureId, occurredAt])
+  @@index([occurredAt])
+  @@map("flag_change_events")
 }
 
