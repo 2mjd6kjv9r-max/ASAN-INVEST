@@ -265,6 +265,10 @@ public sealed class DomainRuleTests
         Assert.False(BankPilot.ExceedsLimit(2));
         Assert.True(BankPilot.ExceedsLimit(3));
         Assert.Equal(2, BankPilot.MaxBanks);
+        Assert.True(BankPilot.IsPilotInstitution("pilot-bank-a"));
+        Assert.True(BankPilot.IsPilotInstitution("PILOT-BANK-B"));
+        Assert.False(BankPilot.IsPilotInstitution("economy-ministry"));
+        Assert.False(BankPilot.IsPilotInstitution(null));
     }
 
     [Fact]

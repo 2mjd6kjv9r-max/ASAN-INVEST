@@ -324,6 +324,8 @@ public sealed class Phase2Service
         {
             var bank = await _db.Classifications.FirstOrDefaultAsync(c => c.Id == bankId && c.Kind == ClassificationKind.INSTITUTION && c.IsActive, ct)
                 ?? throw AppException.BadRequest("CLASSIFICATION", "Bank institution was not found");
+            if (!BankPilot.IsPilotInstitution(bank.Code))
+                throw AppException.BadRequest("CLASSIFICATION", "Bank KYC submissions are limited to seeded pilot-bank institutions");
             if (existing.Contains(bankId))
                 throw AppException.Conflict("A submission to this bank already exists for the project");
 
@@ -427,8 +429,13 @@ public sealed class Phase2Service
 
     public async Task<object> BankDecisionAsync(CurrentUser user, Guid taskId, string outcome, string? reason, CancellationToken ct)
     {
-        var task = await _db.Tasks.Include(t => t.Case).ThenInclude(c => c.Application)
+        var task = await _db.Tasks.Include(t => t.Case).ThenInclude(c => c.Application).ThenInclude(a => a.Type)
+            .Include(t => t.Institution)
             .FirstOrDefaultAsync(t => t.Id == taskId, ct) ?? throw AppException.NotFound("Task not found");
+        if (!string.Equals(task.Case.Application.Type.Code, "bank_kyc", StringComparison.OrdinalIgnoreCase))
+            throw AppException.BadRequest("WRONG_WORKFLOW", "Bank decisions apply only to bank_kyc cases");
+        if (!BankPilot.IsPilotInstitution(task.Institution.Code))
+            throw AppException.Forbidden("Bank decisions apply only to pilot-bank institutions");
         if (user.Roles.Contains(UserRole.INSTITUTION_REP) && task.InstitutionId != user.InstitutionId)
             throw AppException.Forbidden("Bank staff can only decide tasks for their own institution");
 
