@@ -127,6 +127,23 @@ public sealed class HttpContractTests : IClassFixture<ApiFactory>
     }
 
     [Fact]
+    public async Task Plan_identity_starts_are_not_http_conflicts()
+    {
+        var foreign = await _client.PostAsJsonAsync("/api/v1/auth/foreign-esign/start", new { });
+        Assert.Equal(HttpStatusCode.OK, foreign.StatusCode);
+        using var foreignBody = JsonDocument.Parse(await foreign.Content.ReadAsStringAsync());
+        Assert.False(foreignBody.RootElement.GetProperty("data").GetProperty("available").GetBoolean());
+
+        var again = await _client.PostAsJsonAsync("/api/v1/auth/foreign-esign/start", new { issuer = "unlisted" });
+        Assert.Equal(HttpStatusCode.OK, again.StatusCode);
+
+        var start = await _client.PostAsync("/api/v1/auth/e-nonresident/start", null);
+        Assert.Equal(HttpStatusCode.Unauthorized, start.StatusCode);
+        using var startBody = JsonDocument.Parse(await start.Content.ReadAsStringAsync());
+        Assert.NotEqual("CONFLICT", startBody.RootElement.GetProperty("error").GetProperty("code").GetString());
+    }
+
+    [Fact]
     public async Task Integration_status_is_honest_plan()
     {
         var res = await _client.GetAsync("/api/v1/integrations/visa/status");
@@ -359,6 +376,33 @@ public sealed class DomainRuleTests
         using var filled = JsonDocument.Parse("""{"ubo":"Alice","sourceOfFunds":"salary"}""");
         Assert.False(Phase3Integrity.HasKycContent(empty.RootElement));
         Assert.True(Phase3Integrity.HasKycContent(filled.RootElement));
+
+        Assert.Equal("OUTBOUND", Phase3Integrity.IntegrationDirection("outbound"));
+        Assert.Equal("INBOUND", Phase3Integrity.IntegrationDirection("inbound"));
+        Assert.Equal("OUTBOUND", Phase3Integrity.IntegrationDirection(null));
+
+        const string customsSchema = """{"fields":[{"name":"equipmentDescription","required":true}]}""";
+        const string utilitySchema = """{"fields":[{"name":"utilityKind","required":true}]}""";
+        using var blank = JsonDocument.Parse("{}");
+        using var nested = JsonDocument.Parse("""{"answers":{"equipmentDescription":"line"}}""");
+        using var utility = JsonDocument.Parse("""{"utilityKind":"electricity"}""");
+        Assert.Contains(Phase3Integrity.MissingRequiredFields(customsSchema, blank.RootElement), m => m.Path == "equipmentDescription");
+        Assert.Contains(Phase3Integrity.MissingRequiredFields(utilitySchema, blank.RootElement), m => m.Path == "utilityKind");
+        Assert.Empty(Phase3Integrity.MissingRequiredFields(customsSchema, nested.RootElement));
+        Assert.Empty(Phase3Integrity.MissingRequiredFields(utilitySchema, utility.RootElement));
+        Assert.Equal(
+            Phase3Integrity.MissingRequiredFields(customsSchema, blank.RootElement).Select(m => m.Path),
+            Phase3Integrity.MissingRequiredFields(customsSchema, blank.RootElement).Select(m => m.Path));
+
+        Assert.True(Phase3Integrity.IsPlanExternalSubmitTask(Phase3Integrity.PlanExternalSubmitOpinion));
+        Assert.True(Phase3Integrity.HasRecordedPlanExternalSubmit(["other", Phase3Integrity.PlanExternalSubmitOpinion]));
+        Assert.False(Phase3Integrity.HasRecordedPlanExternalSubmit(["Complete bank KYC in back-office"]));
+        Assert.True(Phase3Integrity.CanAssignPlanCoordination(CaseInternalStatus.REGISTERED));
+        Assert.True(Phase3Integrity.CanAssignPlanCoordination(CaseInternalStatus.INTER_AGENCY_COORDINATION));
+        Assert.False(Phase3Integrity.CanAssignPlanCoordination(CaseInternalStatus.WAITING_ADDITIONAL_INFO));
+        Assert.False(Phase3Integrity.CanAssignPlanCoordination(CaseInternalStatus.RESULT_BEING_PREPARED));
+        Assert.False(Phase3Integrity.CanAssignPlanCoordination(CaseInternalStatus.COMPLETED));
+        Assert.False(Phase3Integrity.CanAssignPlanCoordination(CaseInternalStatus.REJECTED));
     }
 
     [Fact]

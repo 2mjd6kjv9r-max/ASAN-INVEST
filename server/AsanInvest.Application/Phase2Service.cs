@@ -292,14 +292,17 @@ public sealed class Phase2Service
         if (BankPilot.ExceedsLimit(unique.Count))
             throw AppException.BadRequest("BANK_LIMIT", $"The bank pilot accepts at most {BankPilot.MaxBanks} institutions");
 
-        var existing = await _db.Applications.Include(a => a.Case)
+        var existingRows = await _db.Applications.Include(a => a.Type).Include(a => a.Case)
             .Where(a => a.ProjectId == projectId && a.Type.Code == "bank_kyc")
-            .Select(a => a.Case!.InstitutionId)
+            .ToListAsync(ct);
+        var existing = existingRows
+            .Select(a => a.Case?.InstitutionId)
             .Where(id => id != null)
             .Select(id => id!.Value)
             .Distinct()
-            .ToListAsync(ct);
-        var combined = existing.Concat(unique).Distinct().Count();
+            .ToList();
+        var newBanks = unique.Where(id => !existing.Contains(id)).ToList();
+        var combined = existing.Count + newBanks.Count;
         if (BankPilot.ExceedsLimit(combined))
             throw AppException.BadRequest("BANK_LIMIT", $"This project already has bank submissions. The pilot cap is {BankPilot.MaxBanks}.");
 
@@ -320,14 +323,28 @@ public sealed class Phase2Service
             ?? throw AppException.BadRequest("NOT_CONFIGURED", "bank_kyc application type is not seeded");
         var packet = JsonDocument.Parse(profile.UboStructure).RootElement.Clone();
         var created = new List<object>();
-        foreach (var bankId in unique)
+        foreach (var prior in existingRows.Where(a => a.Case?.InstitutionId is Guid id && unique.Contains(id)))
+        {
+            var priorBank = await _db.Classifications.FirstOrDefaultAsync(c => c.Id == prior.Case!.InstitutionId, ct);
+            created.Add(new
+            {
+                applicationId = prior.Id,
+                publicNumber = prior.PublicNumber,
+                caseId = prior.Case?.Id,
+                bankInstitutionId = prior.Case?.InstitutionId,
+                bankCode = priorBank?.Code,
+                channel = prior.BankChannel,
+                flag = Flag.PLANNED,
+                code = "INTEGRATION_UNAVAILABLE",
+                reused = true,
+            });
+        }
+        foreach (var bankId in newBanks)
         {
             var bank = await _db.Classifications.FirstOrDefaultAsync(c => c.Id == bankId && c.Kind == ClassificationKind.INSTITUTION && c.IsActive, ct)
                 ?? throw AppException.BadRequest("CLASSIFICATION", "Bank institution was not found");
             if (!BankPilot.IsPilotInstitution(bank.Code))
                 throw AppException.BadRequest("CLASSIFICATION", "Bank KYC submissions are limited to seeded pilot-bank institutions");
-            if (existing.Contains(bankId))
-                throw AppException.Conflict("A submission to this bank already exists for the project");
 
             var app = new ApplicationEntity
             {
@@ -351,9 +368,6 @@ public sealed class Phase2Service
                 SectorId = project.SectorId,
                 RegionId = project.TerritoryId,
             };
-            _db.Applications.Add(app);
-            _db.Cases.Add(cse);
-            await _db.SaveChangesAsync(ct);
 
             IntegrationOutcome outcome;
             var remoteChannel = app.BankChannel == BankChannel.REMOTE_ESIGN;
@@ -364,6 +378,8 @@ public sealed class Phase2Service
             else
                 outcome = new IntegrationOutcome(false, Flag.PLANNED.ToString(), null, "{}", "Bank pilot adapter is disabled. The case stays with a PLAN / PHYSICAL honesty flag.");
 
+            _db.Applications.Add(app);
+            _db.Cases.Add(cse);
             LogIntegration("bank_kyc", "outbound", "case", cse.Id.ToString(), outcome);
             _db.Tasks.Add(new TaskItem
             {
@@ -389,7 +405,8 @@ public sealed class Phase2Service
             });
         }
 
-        Notify(user.Id, "BANK_KYC_SENT", "Bank KYC submissions were recorded. Open the passport Bank hesabı stage for per-bank status.", new { projectId });
+        if (newBanks.Count > 0)
+            Notify(user.Id, "BANK_KYC_SENT", "Bank KYC submissions were recorded. Open the passport Bank hesabı stage for per-bank status.", new { projectId });
         await _db.SaveChangesAsync(ct);
         var remote = (channel ?? BankChannel.PHYSICAL_SIGNATURE) == BankChannel.REMOTE_ESIGN;
         return new
@@ -1174,7 +1191,7 @@ public sealed class Phase2Service
         _db.IntegrationMessages.Add(new IntegrationMessage
         {
             Provider = provider,
-            Direction = direction,
+            Direction = Phase3Integrity.IntegrationDirection(direction),
             ObjectType = objectType,
             ObjectId = objectId,
             ProviderRef = PaymentIntegrity.NormalizeProviderRef(outcome.ProviderRef),

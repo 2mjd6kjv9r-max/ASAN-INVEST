@@ -69,9 +69,13 @@ public sealed class Phase3Service
     public async Task<object> StartENonresidentAsync(CurrentUser user, CancellationToken ct)
     {
         var outcome = await _eNonresident.StartAsync(user.Id, ct);
-        LogIntegration("e_nonresident", "outbound", "user", user.Id.ToString(), outcome);
-        Audit(user.Id, "identity.e_nonresident_start", "user", user.Id.ToString(), new { outcome.Available, outcome.Flag });
-        await _db.SaveChangesAsync(ct);
+        // PLAN clicks must return 200 available:false. Do not persist a stub row that can 409.
+        if (outcome.Available)
+        {
+            LogIntegration("e_nonresident", "outbound", "user", user.Id.ToString(), outcome);
+            Audit(user.Id, "identity.e_nonresident_start", "user", user.Id.ToString(), new { outcome.Available, outcome.Flag });
+            await _db.SaveChangesAsync(ct);
+        }
         return new
         {
             flag = Flag.PLANNED,
@@ -259,12 +263,16 @@ public sealed class Phase3Service
 
         var code = NormalizeCode(stage.Procedure.IntegrationCode ?? stage.Procedure.Code);
         var outcome = await DispatchAdapter(code, stage.Id, ct);
-        LogIntegration(code, "outbound", "stage", stage.Id.ToString(), outcome);
 
         Guid? caseId = null;
         Case? cse = null;
         if (stage.ApplicationId is Guid appId)
-            cse = await _db.Cases.FirstOrDefaultAsync(c => c.ApplicationId == appId, ct);
+            cse = await _db.Cases.Include(c => c.Tasks).FirstOrDefaultAsync(c => c.ApplicationId == appId, ct);
+
+        var alreadyRecorded = cse is not null
+            && Phase3Integrity.HasRecordedPlanExternalSubmit(cse.Tasks.Select(t => t.Opinion));
+        if (!alreadyRecorded)
+            LogIntegration(code, "outbound", "stage", stage.Id.ToString(), outcome);
 
         if (!outcome.Available)
         {
@@ -280,29 +288,35 @@ public sealed class Phase3Service
                     RegionId = stage.Project.TerritoryId,
                 };
                 _db.Cases.Add(cse);
-                await _db.SaveChangesAsync(ct);
             }
             if (cse is not null)
             {
-                _db.Tasks.Add(new TaskItem
+                if (!alreadyRecorded)
                 {
-                    CaseId = cse.Id,
-                    InstitutionId = stage.Procedure.InstitutionId,
-                    DueAt = cse.SlaDueAt ?? DateTimeOffset.UtcNow.AddDays(10),
-                    Status = "open",
-                    Opinion = "Complete this PLAN integration in back-office. The adapter is not available.",
-                });
-                cse.InternalStatus = CaseInternalStatus.INTER_AGENCY_COORDINATION;
+                    _db.Tasks.Add(new TaskItem
+                    {
+                        CaseId = cse.Id,
+                        InstitutionId = stage.Procedure.InstitutionId,
+                        DueAt = cse.SlaDueAt ?? DateTimeOffset.UtcNow.AddDays(10),
+                        Status = "open",
+                        Opinion = Phase3Integrity.PlanExternalSubmitOpinion,
+                    });
+                    if (Phase3Integrity.CanAssignPlanCoordination(cse.InternalStatus))
+                        cse.InternalStatus = CaseInternalStatus.INTER_AGENCY_COORDINATION;
+                }
                 caseId = cse.Id;
             }
-            else
-            {
-                // No application yet: still honest PLAN, Z-04 next step is to open a draft müraciət.
-            }
+        }
+        else
+        {
+            caseId = cse?.Id;
         }
 
-        Audit(user.Id, "integration.external_submit", "stage", stage.Id.ToString(), new { code, available = outcome.Available, flag = outcome.Flag });
-        Notify(user.Id, "INTEGRATION_PLAN", "The external step is recorded with a PLAN honesty flag. Open the passport for the next action.", new { stageId });
+        if (!alreadyRecorded)
+        {
+            Audit(user.Id, "integration.external_submit", "stage", stage.Id.ToString(), new { code, available = outcome.Available, flag = outcome.Flag });
+            Notify(user.Id, "INTEGRATION_PLAN", "The external step is recorded with a PLAN honesty flag. Open the passport for the next action.", new { stageId });
+        }
         await _db.SaveChangesAsync(ct);
         return new
         {
@@ -397,7 +411,7 @@ public sealed class Phase3Service
         _db.IntegrationMessages.Add(new IntegrationMessage
         {
             Provider = provider,
-            Direction = direction,
+            Direction = Phase3Integrity.IntegrationDirection(direction),
             ObjectType = objectType,
             ObjectId = objectId,
             ProviderRef = PaymentIntegrity.NormalizeProviderRef(outcome.ProviderRef),
