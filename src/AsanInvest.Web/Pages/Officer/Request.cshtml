@@ -1,0 +1,36 @@
+@page "{id:guid}"
+@model RequestModel
+@{ var r = Model.Req; ViewData["Title"] = r.Number; }
+<p><a href="@Url.Page("Inbox")">← Gələn sorğular</a></p>
+<div class="card">
+  <div class="row between"><h1>@r.Number — @r.Type</h1><span class="pill @r.Status.Css()">@r.Status.Of()</span></div>
+  <p>Mərhələ @r.StageNumber · Kanal: @r.Channel.Of() · Göndərilib: @C.Local(r.SentAt)@(r.ResubmissionCount > 0 ? $" · yenidən göndərilib ×{r.ResubmissionCount}" : "")</p>
+  @if (r.Simulated) { <div class="note">Simulyasiya: real qurum sistemi qoşulmayıb. Aşağıdakı «sistem məlumatları» nümunə məlumatdır.</div> }
+  @if (r.DecisionReason is not null) { <p><b>Son qərarın səbəbi:</b> @r.DecisionReason</p> }
+</div>
+<div class="grid g2">
+  <div class="card"><h2>Sistemdən çəkilən məlumatlar</h2>
+    <table><tbody>@foreach (var i in Model.SystemData) { <tr><th>@i.Label</th><td>@i.Value</td></tr> }</tbody></table></div>
+  <div class="card"><h2>Əlavə olunmuş sənədlər</h2>
+    @if (Model.Docs.Count == 0) { <p class="mut">Sənəd yoxdur.</p> }
+    @foreach (var d in Model.Docs) { <p>@d.FileName <small>(@d.Type)</small> <a href="/Doc/@d.Id">Yüklə</a></p> }
+    @if (r.ResultDocumentId is { } rd) { <p><b>Nəticə sənədi:</b> <a href="/Doc/@rd">Yüklə</a></p> }</div>
+</div>
+@if (Model.Open)
+{
+  <div class="card"><h2>Qərar</h2>
+    <form method="post" enctype="multipart/form-data" asp-page-handler="Decide">
+      <input type="hidden" name="id" value="@r.Id" />
+      <div class="field"><label for="reason">Səbəb / qeyd <span class="hint">(imtina və əlavə sənəd üçün məcburidir)</span></label><textarea id="reason" name="reason" maxlength="2000"></textarea></div>
+      <div class="field"><label for="result">Nəticə sənədi <span class="hint">(təsdiq zamanı, PDF/JPG/PNG)</span></label><input id="result" type="file" name="result" accept=".pdf,.jpg,.jpeg,.png" /></div>
+      <div class="row">
+        <button class="btn ok" name="decision" value="Approved">Təsdiqlə</button>
+        <button class="btn" name="decision" value="MoreDocsRequired">Əlavə sənəd tələb et</button>
+        <button class="btn danger" name="decision" value="Rejected" data-confirm="İmtina qərarı qeyd edilsin?">İmtina</button>
+      </div>
+    </form></div>
+}
+<div class="card"><h2>Yazışma (investor / koordinator ilə)</h2>
+  @foreach (var m in Model.Thread) { <div class="msg"><small><b>@C.UserName(m.AuthorId)</b> · @C.Local(m.CreatedAt)</small>@m.Text</div> }
+  <form method="post" asp-page-handler="Message"><input type="hidden" name="id" value="@r.Id" />
+    <textarea name="text" maxlength="4000" required aria-label="Mesaj"></textarea><p><button class="btn ghost">Göndər</button></p></form></div>

@@ -1,0 +1,55 @@
+@page
+@model RoadmapModel
+@{ ViewData["Title"] = "Yol xəritəsi"; var v = Model.View!; var cat = C.P.Catalog;
+   var allCodes = v.Stages.SelectMany(s => s.Run.InstitutionCodes).Distinct().OrderBy(c => cat.InstName(c)).ToList(); }
+<div class="row between"><h1>Yol xəritəsi</h1><span>@v.CompletedCount / @v.ActiveCount · @v.Percent%</span></div>
+<progress max="100" value="@v.Percent"></progress>
+<form method="get" class="row card">
+  <select name="mode" data-autosubmit aria-label="Görünüş">
+    <option value="stages" selected="@(Model.ViewMode == "stages")">Mərhələlər üzrə</option>
+    <option value="inst" selected="@(Model.ViewMode == "inst")">Qurumlar üzrə</option></select>
+  <select name="kind" data-autosubmit aria-label="Növ"><option value="">Bütün növlər</option>
+    @foreach (var k in Enum.GetValues<StageKind>()) { <option value="@k" selected="@(Model.Kind == k.ToString())">@k.Of()</option> }</select>
+  <select name="status" data-autosubmit aria-label="Status"><option value="">Bütün statuslar</option>
+    @foreach (var s in Enum.GetValues<StageStatus>()) { <option value="@s" selected="@(Model.Status == s.ToString())">@s.Of()</option> }</select>
+  <select name="inst" data-autosubmit aria-label="Qurum"><option value="">Bütün qurumlar</option>
+    @foreach (var c in allCodes) { <option value="@c" selected="@(Model.Inst == c)">@cat.InstName(c)</option> }</select>
+  <noscript><button class="btn small">Tətbiq et</button></noscript>
+</form>
+@if (Model.Stages.Count == 0) { <div class="card empty">Filtrə uyğun mərhələ yoxdur.</div> }
+@if (Model.ViewMode == "stages")
+{
+  <div class="tl">
+  @foreach (var s in Model.Stages)
+  {
+    <div class="step @s.Status.Css()"><span class="dot"></span>
+      <div class="card">
+        <div class="row between">
+          <b>Mərhələ @s.Number — @s.Template.Name</b>
+          <span class="pill @s.Status.Css()">@s.Status.Of()</span>
+        </div>
+        <small>@s.Template.Kind.Of()@(s.Template.Duration != "" ? " · " + s.Template.Duration : "")@(s.TasksTotal > 0 ? $" · {s.TasksDone}/{s.TasksTotal} tapşırıq" : "")</small>
+        @if (s.Run.InstitutionCodes.Count > 0)
+        {
+          <div class="chips">
+            @foreach (var c in s.Run.InstitutionCodes) { <span class="chip">@c</span> }
+            @if (s.Run.InstitutionCodes.Count > 3) { <button type="button" class="more" data-more="+@(s.Run.InstitutionCodes.Count - 3)">+@(s.Run.InstitutionCodes.Count - 3)</button> }
+          </div>
+        }
+        @if (s.Deadline is { } d) { <div class="deadline @(d.Severity == DeadlineSeverity.Overdue ? "bad" : d.Severity == DeadlineSeverity.Warning ? "warn" : "") card">Son tarix: @C.DateOnly(d.DueDate) (@(d.DaysLeft < 0 ? $"{-d.DaysLeft} gün gecikib" : $"{d.DaysLeft} gün"))</div> }
+        @if (s.BlockReason is not null) { <div class="note">@s.BlockReason</div> }
+        <a href="@Url.Page("/Stage/Index", new { jobId = v.Job.Id, number = s.Number })">Aç →</a>
+      </div>
+    </div>
+  }
+  </div>
+}
+else
+{
+  @foreach (var code in Model.Stages.SelectMany(s => s.Run.InstitutionCodes).Distinct().OrderBy(c => cat.InstName(c)))
+  {
+    <div class="card"><h3>@cat.InstName(code)</h3>
+      <ul>@foreach (var s in Model.Stages.Where(s => s.Run.InstitutionCodes.Contains(code)))
+      { <li><a href="@Url.Page("/Stage/Index", new { jobId = v.Job.Id, number = s.Number, tab = "institutions" })">Mərhələ @s.Number — @s.Template.Name</a> <span class="pill @s.Status.Css()">@s.Status.Of()</span></li> }</ul></div>
+  }
+}

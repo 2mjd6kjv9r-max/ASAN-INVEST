@@ -1,0 +1,11 @@
+@page
+@model InstitutionsModel
+@{ ViewData["Title"] = "Qurumlar"; var cat = C.P.Catalog; }
+<h1>Qurum kataloqu (@cat.InstitutionOrder.Count)</h1>
+<div class="card"><table><thead><tr><th>Kod</th><th>Qurum</th><th>Növ</th><th>Kanal</th><th>İştirak etdiyi qruplar</th></tr></thead><tbody>
+@foreach (var code in cat.InstitutionOrder)
+{
+  var i = cat.Inst(code)!; var map = cat.StagesOfInstitution(code);
+  <tr><td>@i.Code</td><td>@i.Name</td><td>@i.Type</td><td>@i.Channel.Of()</td><td>@string.Join("; ", map.Select(kv => kv.Key + ": " + string.Join(", ", kv.Value)))</td></tr>
+}
+</tbody></table><p class="hint">Kanalı «Göstərilməyib» olan qurumlar üçün mənbə sənədlərdə məlumat yoxdur (açıq məsələ).</p></div>

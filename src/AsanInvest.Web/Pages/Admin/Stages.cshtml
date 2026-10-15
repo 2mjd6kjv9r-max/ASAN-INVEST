@@ -1,0 +1,26 @@
+@page
+@model StagesModel
+@{ ViewData["Title"] = "Mərhələ kataloqu"; var cat = C.P.Catalog; }
+<h1>Mərhələ kataloqu</h1>
+<div class="note">Dəyişikliklər yalnız yeni yaradılan işlərə tətbiq olunur. Ssenari redaktoru (mərhələ/bənd əlavə etmə) növbəti versiyadadır; hazırda qurum təyinatı dəyişdirilə bilər.</div>
+<form method="get" class="row card"><label for="group">Qrup</label>
+ <select id="group" name="group" data-autosubmit>@foreach (var g in Model.Groups) { <option value="@g" selected="@(g == Model.Group)">@g — @cat.Group(g).Title</option> }</select></form>
+@if (Model.Overrides.Count > 0)
+{
+  <div class="card"><h2>Aktiv dəyişikliklər</h2>
+  @foreach (var o in Model.Overrides) { <div class="row between"><span>Mərhələ @o.StageNumber: + @string.Join(", ", o.AddCodes) / − @string.Join(", ", o.RemoveCodes)</span>
+    <form method="post" asp-page-handler="Clear"><input type="hidden" name="id" value="@o.Id" /><input type="hidden" name="group" value="@Model.Group" /><button class="btn small ghost">Sıfırla</button></form></div> }</div>
+}
+<div class="card"><table><thead><tr><th>№</th><th>Mərhələ</th><th>Növ</th><th>Yol</th><th>Müddət</th><th>Qurumlar</th><th>Dəyiş</th></tr></thead><tbody>
+@foreach (var s in Model.Tpl.Stages)
+{
+  <tr><td>@s.Number</td><td>@s.Name</td><td>@s.Kind.Of()</td><td>@s.Path</td><td>@s.Duration</td>
+  <td>@string.Join(", ", s.InstitutionCodes)</td>
+  <td><form method="post" asp-page-handler="Change" class="row">
+    <input type="hidden" name="group" value="@Model.Group" /><input type="hidden" name="stage" value="@s.Number" />
+    <select name="code" aria-label="Qurum">@foreach (var c in cat.InstitutionOrder) { <option value="@c">@c</option> }</select>
+    <select name="op" aria-label="Əməliyyat"><option value="add">əlavə et</option><option value="remove">çıxar</option></select>
+    <button class="btn small ghost">OK</button></form></td></tr>
+}
+</tbody></table></div>
+<div class="card"><h2>12 ssenari</h2><div class="chips open">@foreach (var sc in Model.Scenarios) { <span class="chip">@sc.Code — @sc.Title</span> }</div></div>

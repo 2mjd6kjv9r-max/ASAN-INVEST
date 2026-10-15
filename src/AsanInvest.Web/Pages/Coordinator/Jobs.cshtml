@@ -1,0 +1,35 @@
+@page
+@model JobsModel
+@{ ViewData["Title"] = "İşlər"; }
+<div class="row between"><h1>Mənim işlərim</h1>
+  <div><a class="btn small @(Model.Kanban ? "ghost" : "")" href="?mode=table">Cədvəl</a> <a class="btn small @(Model.Kanban ? "" : "ghost")" href="?mode=kanban">Kanban</a></div></div>
+<div class="grid g4">
+  <div class="card stat">@Model.Rows.Count<small>Aktiv iş</small></div>
+  <div class="card stat">@Model.Rows.Sum(r => r.OpenRequests)<small>Açıq sorğu</small></div>
+  <div class="card stat">@Model.Rows.Count(r => r.Overdue)<small>Gecikmiş müddət</small></div>
+  <div class="card stat">@Model.Rows.Count(r => r.HasReady)<small>Göndərilməyi gözləyən</small></div>
+</div>
+@if (Model.Rows.Count == 0) { <div class="card empty">Sizə iş təyin edilməyib.</div> }
+@if (!Model.Kanban)
+{
+  <div class="card"><table><thead><tr><th>İş</th><th>Ssenari</th><th>İrəliləyiş</th><th>Cari mərhələ</th><th>Açıq sorğu</th><th></th></tr></thead><tbody>
+  @foreach (var r in Model.Rows)
+  {
+    <tr><td><a href="@Url.Page("Job", new { id = r.V.Job.Id })">@r.V.Job.Title</a></td><td>@r.V.Scenario.Code</td>
+    <td>@r.V.Percent%</td><td>@(r.V.Current is { } c ? $"{c.Number} — {c.Template.Name}" : "—")</td><td>@r.OpenRequests</td>
+    <td>@if (r.Overdue) { <span class="pill bad">Gecikib</span> } @if (r.HasReady) { <span class="pill warn">Göndərməyə hazır</span> }</td></tr>
+  }
+  </tbody></table></div>
+}
+else
+{
+  <div class="kan">
+  @foreach (var st in new[] { StageStatus.NotStarted, StageStatus.InProgress, StageStatus.AtInstitution, StageStatus.NeedsAttention, StageStatus.Completed })
+  {
+    <div class="col"><h3>@st.Of()</h3>
+    @foreach (var r in Model.Rows.Where(r => (r.V.Current?.Status ?? StageStatus.Completed) == st))
+    { <div class="card"><a href="@Url.Page("Job", new { id = r.V.Job.Id })">@r.V.Job.Title</a><br /><small>@(r.V.Current is { } c ? "Mərhələ " + c.Number : "Bitib") · @r.V.Percent%</small></div> }
+    </div>
+  }
+  </div>
+}

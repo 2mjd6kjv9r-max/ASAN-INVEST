@@ -1,0 +1,24 @@
+@page
+@model UsersModel
+@{ ViewData["Title"] = "İstifadəçilər"; var cat = C.P.Catalog; }
+<h1>İstifadəçilər</h1>
+<div class="card"><table><thead><tr><th>Ad</th><th>E-poçt</th><th>Rol</th><th>Qurum</th><th></th></tr></thead><tbody>
+@foreach (var u in Model.Items)
+{
+  <tr><td>@u.Name @if (u.IsDemo) { <span class="pill mute">demo</span> }</td><td>@u.Email</td>
+  <td><form method="post" asp-page-handler="Role" class="row"><input type="hidden" name="id" value="@u.Id" />
+    <select name="role" aria-label="Rol">@foreach (var r in Enum.GetValues<Role>()) { <option value="@r" selected="@(u.Role == r)">@r.Of()</option> }</select>
+    <select name="institution" aria-label="Qurum"><option value="">—</option>@foreach (var c in cat.InstitutionOrder) { <option value="@c" selected="@(u.InstitutionCode == c)">@c</option> }</select>
+    <button class="btn small ghost">Dəyiş</button></form></td>
+  <td>@u.InstitutionCode</td>
+  <td><form method="post" asp-page-handler="Block"><input type="hidden" name="id" value="@u.Id" /><input type="hidden" name="block" value="@((!u.Blocked).ToString().ToLower())" />
+    <button class="btn small @(u.Blocked ? "ok" : "danger")">@(u.Blocked ? "Blokdan çıxar" : "Blokla")</button></form></td></tr>
+}
+</tbody></table></div>
+<div class="card"><h2>Yeni istifadəçi</h2>
+<form method="post" asp-page-handler="Invite">
+ <div class="field"><label for="n">Ad</label><input id="n" name="name" required maxlength="120" /></div>
+ <div class="field"><label for="e">E-poçt</label><input id="e" type="email" name="email" required maxlength="200" /></div>
+ <div class="field"><label for="r">Rol</label><select id="r" name="role">@foreach (var r in Enum.GetValues<Role>()) { <option value="@r">@r.Of()</option> }</select></div>
+ <div class="field"><label for="i">Qurum (yalnız qurum əməkdaşı üçün)</label><select id="i" name="institution"><option value="">—</option>@foreach (var c in cat.InstitutionOrder) { <option value="@c">@c — @cat.InstName(c)</option> }</select></div>
+ <button class="btn">Yarat</button></form></div>

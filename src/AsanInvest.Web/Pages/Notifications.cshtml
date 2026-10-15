@@ -1,0 +1,13 @@
+@page
+@model NotificationsModel
+@{ ViewData["Title"] = "Bildirişlər"; }
+<div class="row between"><h1>Bildirişlər</h1>
+<form method="post" asp-page-handler="ReadAll"><button class="btn ghost small">Hamısını oxunmuş et</button></form></div>
+@if (Model.Items.Count == 0) { <div class="card empty">Bildiriş yoxdur.</div> }
+@foreach (var n in Model.Items)
+{
+  <div class="card row between">
+    <div>@if (!n.Read) { <span class="pill info">Yeni</span> } @n.Text <br /><small>@C.Local(n.CreatedAt)</small></div>
+    @if (n.Link is { } l && l.StartsWith("/") && !l.StartsWith("//")) { <a class="btn small ghost" href="@l">Aç</a> }
+  </div>
+}

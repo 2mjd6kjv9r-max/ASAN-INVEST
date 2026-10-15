@@ -1,0 +1,31 @@
+@page
+@model DocumentsModel
+@{ ViewData["Title"] = "Sənədlər"; }
+<h1>Sənədlər</h1>
+<div class="card">
+  @if (Model.Docs.Count == 0) { <p class="empty">Sənəd yüklənməyib.</p> }
+  else
+  {
+    <table><thead><tr><th>Fayl</th><th>Növ</th><th>Mərhələlər</th><th>Yoxlama</th><th>Xarici sənəd</th><th>Yükləndi</th><th></th></tr></thead><tbody>
+    @foreach (var d in Model.Docs)
+    {
+      <tr><td>@d.FileName</td><td>@d.Type</td><td>@(d.StageNumbers.Count == 0 ? "—" : string.Join(", ", d.StageNumbers))</td>
+      <td><span class="pill @(d.Review == ReviewStatus.Accepted ? "ok" : d.Review == ReviewStatus.ChangesRequested ? "bad" : "mute")">@d.Review.Of()</span>
+        @if (d.ReviewReason is not null) { <br /><small>@d.ReviewReason</small> }
+        @if (C.P.Documents.IsExpired(d)) { <br /><span class="pill bad">Müddəti bitib</span> }</td>
+      <td>@d.Foreign.Of()</td><td>@C.Local(d.UploadedAt)</td><td><a href="/Doc/@d.Id">Yüklə</a></td></tr>
+    }
+    </tbody></table>
+  }
+</div>
+@if (Model.CanEdit)
+{
+  <div class="card"><h2>Sənəd yüklə</h2>
+    <form method="post" enctype="multipart/form-data" asp-page-handler="Upload">
+      <div class="field"><label for="file">Fayl <span class="hint">(PDF, JPG, PNG; maks. @C.P.Settings.GetInt(SettingsService.MaxFileMb) MB)</span></label><input id="file" type="file" name="file" accept=".pdf,.jpg,.jpeg,.png" required /></div>
+      <div class="field"><label for="type">Növ</label><select id="type" name="type">@foreach (var t in DocumentService.Types) { <option>@t</option> }</select></div>
+      <div class="field"><label for="country">Verən ölkə</label><input id="country" name="country" value="Azərbaycan" maxlength="80" /></div>
+      <div class="field"><label for="vu">Etibarlılıq tarixi</label><input id="vu" type="date" name="validUntil" /></div>
+      <button class="btn">Yüklə</button>
+    </form></div>
+}

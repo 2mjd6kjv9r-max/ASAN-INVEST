@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/AsanInvest.Core/AsanInvest.Core.csproj" />
+    <Project Path="src/AsanInvest.Infrastructure/AsanInvest.Infrastructure.csproj" />
+    <Project Path="src/AsanInvest.Web/AsanInvest.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/AsanInvest.Tests/AsanInvest.Tests.csproj" />
+  </Folder>
+</Solution>

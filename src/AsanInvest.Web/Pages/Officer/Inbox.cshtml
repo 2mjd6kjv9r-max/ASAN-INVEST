@@ -1,0 +1,23 @@
+@page
+@model InboxModel
+@{ ViewData["Title"] = "Gələn sorğular"; }
+<h1>Gələn sorğular @if (C.Me.InstitutionCode is { } ic) { <small>— @C.P.Catalog.InstName(ic)</small> }</h1>
+<div class="grid g4">
+  <div class="card stat">@Model.Counts["new"]<small>Yeni</small></div>
+  <div class="card stat">@Model.Counts["review"]<small>Baxılır</small></div>
+  <div class="card stat">@Model.Counts["more"]<small>Əlavə sənəd gözlənilir</small></div>
+  <div class="card stat">@Model.AvgDays<small>Orta cavab müddəti (gün)</small></div>
+</div>
+<div class="tabs">
+ @foreach (var (k, txt) in new[] { ("new", "Yeni"), ("review", "Baxılır"), ("more", "Əlavə sənəd gözlənilir"), ("done", "Tamamlanmış") })
+ { <a class="@(Model.Tab == k ? "on" : "")" href="?tab=@k">@txt (@Model.Counts[k])</a> }
+</div>
+<div class="card"><table><thead><tr><th>№</th><th>Növ</th><th>Mərhələ</th><th>Status</th><th>Gəlib</th><th>Son tarix</th><th></th></tr></thead><tbody>
+@foreach (var r in Model.Items)
+{
+  <tr><td>@r.Number</td><td>@r.Type</td><td>@r.StageNumber</td><td><span class="pill @r.Status.Css()">@r.Status.Of()</span></td>
+  <td>@C.Local(r.SentAt)</td><td>@C.Local(r.DueAt, false) @if (C.P.Requests.IsLate(r)) { <span class="pill bad">Gecikir</span> }</td>
+  <td><a class="btn small" href="@Url.Page("Request", new { id = r.Id })">Aç</a></td></tr>
+}
+</tbody></table>
+@if (Model.Items.Count == 0) { <p class="empty">Bu bölmədə sorğu yoxdur.</p> }</div>

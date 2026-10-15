@@ -1,0 +1,216 @@
+@page "/Stage/{jobId:guid}/{number}"
+@model AsanInvest.Web.Pages.Stage.IndexModel
+@using AsanInvest.Core.Catalog
+@{
+    var s = Model.S; var t = s.Template; var cat = C.P.Catalog;
+    ViewData["Title"] = $"Mərhələ {s.Number}";
+    string TabUrl(string tab) => Url.Page(null, new { jobId = Model.Job.Id, number = s.Number, tab })!;
+    var running = s.Applicable;
+    var isVol = t.Kind == StageKind.Voluntary; var isCond = t.Kind == StageKind.Conditional || t.HasTag("alt-channel");
+}
+<p><a href="@(Model.IsCoordinator ? Url.Page("/Coordinator/Job", new { id = Model.Job.Id }) : Url.Page("/Investor/Roadmap"))">← Yol xəritəsi</a></p>
+<div class="card">
+  <div class="row between">
+    <div>
+      <h1>Mərhələ @s.Number — @t.Name</h1>
+      <span class="pill @s.Status.Css()">@s.Status.Of()</span>
+      <span class="pill mute">@t.Kind.Of()</span>
+      @if (t.Duration != "") { <small> · təxmini müddət: @t.Duration</small> }
+    </div>
+  </div>
+  @if (s.BlockReason is not null) { <div class="note"><b>Blok:</b> @s.BlockReason</div> }
+  @foreach (var n in t.Notes) { <div class="note">@n</div> }
+  @if (t.Question is not null && CanAsk(t))
+  {
+    <div class="note">
+      <b>@t.Question</b>
+      @if (Model.CanEdit)
+      {
+        <form method="post" asp-page-handler="Answer" class="inline">
+          <input type="hidden" name="jobId" value="@Model.Job.Id" /><input type="hidden" name="number" value="@s.Number" />
+          <button class="btn small @(s.Run.Answer == true ? "ok" : "ghost")" name="answer" value="true">@(isVol ? "Əlavə et" : t.HasTag("alt-channel") ? "Bu kanalı seçirəm" : "Bəli")</button>
+          <button class="btn small @(s.Run.Answer == false ? "danger" : "ghost")" name="answer" value="false">@(isVol ? "Lazım deyil" : t.HasTag("alt-channel") ? "Seçmirəm" : "Xeyr")</button>
+        </form>
+      }
+    </div>
+  }
+  @if (s.Deadline is { } d)
+  {
+    <div class="card deadline @(d.Severity == DeadlineSeverity.Overdue ? "bad" : d.Severity == DeadlineSeverity.Warning ? "warn" : "")">
+      <b>Qanuni müddət: @d.RuleText</b> — son tarix @C.DateOnly(d.DueDate)
+      · @(d.DaysLeft < 0 ? $"{-d.DaysLeft} gün gecikib" : $"{d.DaysLeft} gün qalıb")
+    </div>
+  }
+  else if (t.Deadline is { AnchorStage: null } && running && Model.CanEdit)
+  {
+    <form method="post" asp-page-handler="Anchor" class="row">
+      <input type="hidden" name="jobId" value="@Model.Job.Id" /><input type="hidden" name="number" value="@s.Number" />
+      <label class="hint" for="date">Müddətin başlanğıc tarixi (@t.Deadline.Amount @(t.Deadline.Unit == 'm' ? "ay" : "gün"))</label>
+      <input id="date" type="date" name="date" required /><button class="btn small">Saxla</button>
+    </form>
+  }
+</div>
+
+<div class="tabs">
+  <a class="@(Model.Tab == "tasks" ? "on" : "")" href="@TabUrl("tasks")">Tapşırıqlar (@s.TasksDone/@s.TasksTotal)</a>
+  <a class="@(Model.Tab == "docs" ? "on" : "")" href="@TabUrl("docs")">Sənədlər (@Model.Docs.Count)</a>
+  <a class="@(Model.Tab == "institutions" ? "on" : "")" href="@TabUrl("institutions")">Qurumlar (@s.Run.InstitutionCodes.Count)</a>
+  <a class="@(Model.Tab == "messages" ? "on" : "")" href="@TabUrl("messages")">Mesajlar (@Model.Thread.Count)</a>
+  <a class="@(Model.Tab == "history" ? "on" : "")" href="@TabUrl("history")">Tarixçə</a>
+</div>
+
+@{
+    bool CanAsk(StageTemplate x) => x.Kind != StageKind.Mandatory || x.HasTag("alt-channel");
+    async Task Tasks(IEnumerable<TaskTemplate> items)
+    {
+        <ul class="tasks">
+        @foreach (var it in items)
+        {
+            var done = s.DoneKeys.Contains(it.Key);
+            <li>
+              <form method="post" asp-page-handler="Task" class="task @(done ? "done" : "")">
+                <input type="hidden" name="jobId" value="@Model.Job.Id" /><input type="hidden" name="number" value="@s.Number" />
+                <input type="hidden" name="key" value="@it.Key" /><input type="hidden" name="done" value="@((!done).ToString().ToLower())" />
+                <button type="submit" @(Model.CanEdit && running ? "" : "disabled") aria-label="Bənd @it.Key">@(done ? "✓" : "")</button>
+                <span>@it.Text @if (it.Optional) { <small>(könüllü)</small> }</span>
+              </form>
+              @if (it.Children.Count > 0) { await Tasks(it.Children); }
+            </li>
+        }
+        </ul>
+    }
+}
+
+@if (Model.Tab == "tasks")
+{
+  <div class="card">
+    @if (!running) { <p class="mut">Bu mərhələ hazırda fəal deyil.</p> }
+    @{ await Tasks(t.Tasks); }
+    @if (running && Model.CanEdit && !Model.IsCoordinator)
+    {
+      <hr />
+      <form method="post" asp-page-handler="Ready" class="row">
+        <input type="hidden" name="jobId" value="@Model.Job.Id" /><input type="hidden" name="number" value="@s.Number" />
+        @if (s.Run.ReadyToSend) { <span class="pill ok">Göndərməyə hazırdır</span><button class="btn ghost small" name="ready" value="false">Geri götür</button> }
+        else { <button class="btn" name="ready" value="true">Qurumlara göndərməyə hazıram</button><small>Bütün məcburi bəndlər işarələnməlidir.</small> }
+      </form>
+    }
+  </div>
+}
+else if (Model.Tab == "docs")
+{
+  <div class="card">
+    <h2>Bu mərhələyə bağlı sənədlər</h2>
+    @if (Model.Docs.Count == 0) { <p class="mut">Sənəd yoxdur.</p> }
+    else
+    {
+      <table><thead><tr><th>Fayl</th><th>Növ</th><th>Yoxlama</th><th>Xarici</th><th></th></tr></thead><tbody>
+      @foreach (var dc in Model.Docs)
+      {
+        <tr><td>@dc.FileName</td><td>@dc.Type</td>
+        <td><span class="pill @(dc.Review == ReviewStatus.Accepted ? "ok" : dc.Review == ReviewStatus.ChangesRequested ? "bad" : "mute")">@dc.Review.Of()</span>
+            @if (dc.ReviewReason is not null) { <br /><small>@dc.ReviewReason</small> }
+            @if (C.P.Documents.IsExpired(dc)) { <br /><span class="pill bad">Etibarlılıq müddəti bitib</span> }</td>
+        <td>@dc.Foreign.Of()</td><td><a href="/Doc/@dc.Id">Yüklə</a></td></tr>
+      }
+      </tbody></table>
+    }
+  </div>
+  @if (Model.CanEdit)
+  {
+    <div class="card">
+      <h2>Sənəd yüklə</h2>
+      <form method="post" enctype="multipart/form-data" asp-page-handler="Upload">
+        <input type="hidden" name="jobId" value="@Model.Job.Id" /><input type="hidden" name="number" value="@s.Number" />
+        <div class="field"><label for="file">Fayl <span class="hint">(PDF, JPG, PNG; maks. @C.P.Settings.GetInt(SettingsService.MaxFileMb) MB)</span></label>
+          <input id="file" type="file" name="file" accept=".pdf,.jpg,.jpeg,.png" required /></div>
+        <div class="field"><label for="type">Sənəd növü</label>
+          <select id="type" name="type">@foreach (var ty in Model.DocTypes) { <option>@ty</option> }</select></div>
+        <div class="field"><label for="country">Verən ölkə <span class="hint">(Azərbaycandan başqa olarsa apostil/tərcümə izlənir)</span></label>
+          <input id="country" name="country" value="Azərbaycan" maxlength="80" /></div>
+        <div class="field"><label for="validUntil">Etibarlılıq tarixi <span class="hint">(varsa)</span></label><input id="validUntil" type="date" name="validUntil" /></div>
+        <button class="btn">Yüklə</button>
+      </form>
+      @{ var others = Model.AllDocs.Where(x => !x.StageNumbers.Contains(s.Number)).ToList(); }
+      @if (others.Count > 0)
+      {
+        <hr /><h3>Mövcud sənədi bu mərhələyə bağla</h3>
+        <form method="post" asp-page-handler="Link" class="row">
+          <input type="hidden" name="jobId" value="@Model.Job.Id" /><input type="hidden" name="number" value="@s.Number" />
+          <select name="docId">@foreach (var o in others) { <option value="@o.Id">@o.FileName (@o.Type)</option> }</select>
+          <button class="btn ghost small">Bağla</button>
+        </form>
+      }
+    </div>
+  }
+}
+else if (Model.Tab == "institutions")
+{
+  <div class="card">
+    <h2>Qurumlar</h2>
+    @if (s.Run.InstitutionCodes.Count == 0) { <p class="mut">Bu mərhələdə qurum iştirak etmir.</p> }
+    <table><thead><tr><th>Qurum</th><th>Kanal</th><th>Sorğu</th><th></th></tr></thead><tbody>
+    @foreach (var code in s.Run.InstitutionCodes)
+    {
+      var inst = cat.Inst(code); var rq = s.Requests.FirstOrDefault(r => r.InstitutionCode == code);
+      <tr><td>@cat.InstName(code)</td><td>@((inst?.Channel ?? InstitutionChannel.Unknown).Of())</td>
+      <td>@if (rq is null) { <span class="pill mute">Göndərilməyib</span> }
+          else { <span class="pill @rq.Status.Css()">@rq.Status.Of()</span> <small>@rq.Number@(rq.ResubmissionCount > 0 ? $" · yenidən göndərilib ×{rq.ResubmissionCount}" : "") · @rq.Channel.Of()</small>
+                 @if (rq.DecisionReason is not null) { <br /><small>Səbəb: @rq.DecisionReason</small> }
+                 @if (rq.ResultDocumentId is { } rd) { <br /><a href="/Doc/@rd">Nəticə sənədi</a> }
+                 @if (rq.Simulated) { <br /><small>(simulyasiya: real qurum inteqrasiyası yoxdur)</small> } }</td>
+      <td>@if (rq?.Status == RequestStatus.MoreDocsRequired && Model.CanEdit)
+          {
+            <form method="post" asp-page-handler="Resubmit"><input type="hidden" name="jobId" value="@Model.Job.Id" /><input type="hidden" name="number" value="@s.Number" />
+            <input type="hidden" name="requestId" value="@rq.Id" /><button class="btn small">Sənəd əlavə etdim, yenidən göndər</button></form>
+          }</td></tr>
+    }
+    </tbody></table>
+  </div>
+  @if (Model.IsCoordinator && running && s.Run.InstitutionCodes.Count > 0)
+  {
+    var pending = s.Run.InstitutionCodes.Where(c => s.Requests.All(r => r.InstitutionCode != c)).ToList();
+    <div class="card">
+      <h2>Sorğu göndər</h2>
+      @if (!s.Run.ReadyToSend) { <p class="mut">İnvestor mərhələni hələ göndərməyə hazır kimi işarələməyib.</p> }
+      else if (pending.Count == 0) { <p class="mut">Bütün qurumlara sorğu göndərilib.</p> }
+      else
+      {
+        <form method="post" asp-page-handler="Send">
+          <input type="hidden" name="jobId" value="@Model.Job.Id" /><input type="hidden" name="number" value="@s.Number" />
+          @foreach (var c in pending) { <label class="row"><input type="checkbox" name="codes" value="@c" checked /> @cat.InstName(c)</label> }
+          <div class="field"><label for="rt">Sorğu növü</label><input id="rt" name="requestType" value="@t.Name" required maxlength="200" /></div>
+          <button class="btn">Seçilmiş qurumlara göndər</button>
+        </form>
+      }
+    </div>
+  }
+}
+else if (Model.Tab == "messages")
+{
+  <div class="card">
+    @if (Model.Thread.Count == 0) { <p class="mut">Mesaj yoxdur.</p> }
+    @foreach (var m in Model.Thread)
+    {
+      <div class="msg @(m.Internal ? "internal" : "")"><small><b>@C.UserName(m.AuthorId)</b>@(m.OnBehalfOf is { } ob ? $" (adından: {C.UserName(ob)})" : "") · @C.Local(m.CreatedAt)@(m.Internal ? " · daxili qeyd" : "")</small>@m.Text</div>
+    }
+    @if (Model.CanEdit)
+    {
+      <form method="post" asp-page-handler="Message">
+        <input type="hidden" name="jobId" value="@Model.Job.Id" /><input type="hidden" name="number" value="@s.Number" />
+        <label for="text">Yeni mesaj</label><textarea id="text" name="text" maxlength="4000" required></textarea>
+        @if (Model.IsCoordinator) { <label class="row"><input type="checkbox" name="isInternal" value="true" /> Daxili qeyd (investora görünmür)</label> }
+        <p><button class="btn">Göndər</button></p>
+      </form>
+    }
+  </div>
+}
+else
+{
+  <div class="card">
+    @if (Model.History.Count == 0) { <p class="mut">Hələ qeyd yoxdur.</p> }
+    <table><thead><tr><th>Vaxt</th><th>Kim</th><th>Əməliyyat</th><th>Təfərrüat</th></tr></thead><tbody>
+    @foreach (var a in Model.History) { <tr><td>@C.Local(a.At)</td><td>@a.ActorName@(a.OnBehalfOfId is { } ob ? $" ({C.UserName(ob)} adından)" : "")</td><td>@a.Action</td><td>@a.Details</td></tr> }
+    </tbody></table>
+  </div>
+}

@@ -1,0 +1,13 @@
+@page
+@model MessagesModel
+@{ ViewData["Title"] = "Mesajlar"; }
+<h1>Mesajlar</h1>
+<div class="card">
+  @if (Model.Thread.Count == 0) { <p class="empty">Mesaj yoxdur.</p> }
+  @foreach (var m in Model.Thread)
+  { <div class="msg"><small><b>@C.UserName(m.AuthorId)</b>@(m.OnBehalfOf is { } ob ? $" ({C.UserName(ob)} adından)" : "") · @C.Local(m.CreatedAt)@(m.StageNumber is null ? "" : " · Mərhələ " + m.StageNumber)</small>@m.Text</div> }
+  @if (Model.CanEdit)
+  {
+    <form method="post"><label for="text">Koordinatora mesaj</label><textarea id="text" name="text" maxlength="4000" required></textarea><p><button class="btn">Göndər</button></p></form>
+  }
+</div>

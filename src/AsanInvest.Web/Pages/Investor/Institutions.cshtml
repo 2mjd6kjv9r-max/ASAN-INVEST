@@ -1,0 +1,16 @@
+@page
+@model InstitutionsModel
+@{ ViewData["Title"] = "Qurumlar"; var v = Model.View!; var cat = C.P.Catalog;
+   var codes = v.Stages.SelectMany(s => s.Run.InstitutionCodes).Distinct().OrderBy(c => cat.InstName(c)).ToList(); }
+<h1>Qurumlar</h1>
+<div class="card">
+<table><thead><tr><th>Qurum</th><th>Kanal</th><th>Mərhələlər və sorğular</th></tr></thead><tbody>
+@foreach (var code in codes)
+{
+  <tr><td><b>@cat.InstName(code)</b><br /><small>@code</small></td><td>@((cat.Inst(code)?.Channel ?? InstitutionChannel.Unknown).Of())</td>
+  <td>@foreach (var s in v.Stages.Where(s => s.Run.InstitutionCodes.Contains(code)))
+      { var r = s.Requests.FirstOrDefault(x => x.InstitutionCode == code);
+        <div><a href="@Url.Page("/Stage/Index", new { jobId = v.Job.Id, number = s.Number, tab = "institutions" })">Mərhələ @s.Number</a>
+        @if (r is null) { <span class="pill mute">sorğu yoxdur</span> } else { <span class="pill @r.Status.Css()">@r.Status.Of()</span> }</div> }</td></tr>
+}
+</tbody></table></div>

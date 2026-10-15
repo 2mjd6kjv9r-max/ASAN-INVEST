@@ -1,0 +1,59 @@
+@page
+@model HomeModel
+@{ ViewData["Title"] = "Əsas səhifə"; var v = Model.View!; var cur = v.Current; var cat = C.P.Catalog; }
+<div class="row between">
+  <h1>@v.Job.Title</h1>
+  @if (Model.Jobs.Count > 1)
+  {
+    <form method="post" asp-page-handler="Switch"><select name="jobId" data-autosubmit aria-label="İş seç">
+      @foreach (var j in Model.Jobs) { <option value="@j.Id" selected="@(j.Id == v.Job.Id)">@j.Title</option> }</select></form>
+  }
+</div>
+<div class="card">
+  <div class="row between"><b>Ümumi irəliləyiş</b><span>@v.CompletedCount / @v.ActiveCount mərhələ · @v.Percent%</span></div>
+  <progress max="100" value="@v.Percent"></progress>
+  <p class="mut">Ssenari: @v.Scenario.Title · Koordinator: @(v.Job.CoordinatorId is { } cid ? C.UserName(cid) : "təyin edilməyib")</p>
+  <a class="btn ghost small" href="/Investor/Onboarding?change=true">Ssenarini dəyiş</a>
+</div>
+<div class="grid g2">
+  <div class="card">
+    <h2>Cari mərhələ</h2>
+    @if (cur is null) { <p>Bütün fəal mərhələlər tamamlanıb. 🎉</p> }
+    else
+    {
+      <p><b>Mərhələ @cur.Number — @cur.Template.Name</b><br /><span class="pill @cur.Status.Css()">@cur.Status.Of()</span></p>
+      @if (cur.TasksTotal > 0) { <progress max="@cur.TasksTotal" value="@cur.TasksDone"></progress><small>@cur.TasksDone / @cur.TasksTotal tapşırıq</small> }
+      <p><a class="btn" href="@Url.Page("/Stage/Index", new { jobId = v.Job.Id, number = cur.Number })">Mərhələyə keç</a></p>
+    }
+  </div>
+  <div class="card">
+    <h2>Son tarixlər</h2>
+    @if (!v.Deadlines.Any()) { <p class="mut">Hələ izlənən qanuni müddət yoxdur.</p> }
+    @foreach (var d in v.Deadlines)
+    {
+      <div class="card deadline @(d.Severity == DeadlineSeverity.Overdue ? "bad" : d.Severity == DeadlineSeverity.Warning ? "warn" : "")">
+        <b>@d.Label</b><br />@C.DateOnly(d.DueDate) · @(d.DaysLeft < 0 ? $"{-d.DaysLeft} gün gecikib" : $"{d.DaysLeft} gün qalıb")
+      </div>
+    }
+  </div>
+</div>
+@{ var attention = v.Stages.Where(s => s.Requests.Any(r => r.Status == RequestStatus.MoreDocsRequired)).ToList(); }
+@if (attention.Count > 0)
+{
+  <div class="card deadline bad"><h2>Diqqət: əlavə sənəd tələb olunur</h2>
+    @foreach (var s in attention)
+    { foreach (var r in s.Requests.Where(r => r.Status == RequestStatus.MoreDocsRequired))
+      { <p><b>@cat.InstName(r.InstitutionCode)</b> (Mərhələ @s.Number): @r.DecisionReason <a href="@Url.Page("/Stage/Index", new { jobId = v.Job.Id, number = s.Number, tab = "institutions" })">Aç</a></p> } }
+  </div>
+}
+<div class="card">
+  <h2>Qurumlardan son cavablar</h2>
+  @if (Model.Recent.Count == 0) { <p class="mut">Hələ sorğu göndərilməyib.</p> }
+  else
+  {
+    <table><thead><tr><th>Qurum</th><th>Mərhələ</th><th>Status</th><th>Yenilənib</th></tr></thead><tbody>
+    @foreach (var r in Model.Recent) { <tr><td>@cat.InstName(r.InstitutionCode)</td><td><a href="@Url.Page("/Stage/Index", new { jobId = v.Job.Id, number = r.StageNumber, tab = "institutions" })">@r.StageNumber</a></td>
+      <td><span class="pill @r.Status.Css()">@r.Status.Of()</span></td><td>@C.Local(r.UpdatedAt)</td></tr> }
+    </tbody></table>
+  }
+</div>

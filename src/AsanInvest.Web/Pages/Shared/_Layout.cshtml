@@ -1,0 +1,70 @@
+@using AsanInvest.Web.Pages
+@{
+    var me = C.User;
+    var role = me?.Role;
+    var job = C.CurrentJob;
+    (string Page, string Text)[] nav = role switch
+    {
+        Role.Investor or Role.Representative => new[] { ("/Investor/Home", "Əsas səhifə"), ("/Investor/Roadmap", "Yol xəritəsi"), ("/Investor/Documents", "Sənədlər"), ("/Investor/Institutions", "Qurumlar"), ("/Investor/Messages", "Mesajlar") },
+        Role.Coordinator => new[] { ("/Coordinator/Jobs", "İşlər"), ("/Coordinator/Requests", "Sorğular") },
+        Role.InstitutionOfficer => new[] { ("/Officer/Inbox", "Gələn sorğular") },
+        Role.Admin => new[] { ("/Admin/Index", "Panel"), ("/Admin/Stages", "Mərhələ kataloqu"), ("/Admin/Institutions", "Qurumlar"), ("/Admin/Users", "İstifadəçilər"), ("/Admin/Audit", "Audit jurnalı"), ("/Admin/Settings", "Parametrlər") },
+        _ => Array.Empty<(string, string)>()
+    };
+    var current = ViewContext.RouteData.Values["page"] as string ?? "";
+    var demoUsers = C.DemoEnabled ? C.P.Store.Users.All().Where(u => u.IsDemo && !u.Blocked).OrderBy(u => u.Role).ThenBy(u => u.Name).ToList() : new List<User>();
+}
+<!DOCTYPE html>
+<html lang="az">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>@(ViewData["Title"] ?? "ASAN İnvest") · ASAN İnvest</title>
+<link rel="icon" href="data:," />
+<link rel="stylesheet" href="~/css/app.css" />
+</head>
+<body>
+<header class="top">
+  <a class="logo" href="/">ASAN <b>İnvest</b></a>
+  @if (job is not null) { <span class="jobtitle">@job.Title</span> }
+  <span class="grow"></span>
+  @if (me is not null)
+  {
+    @if (C.DemoEnabled)
+    {
+      <form method="post" asp-page="/Login" asp-page-handler="Demo" class="inline demo-switch">
+        <select name="userId" aria-label="Demo: rol dəyiş" data-autosubmit>
+          @foreach (var u in demoUsers) { <option value="@u.Id" selected="@(u.Id == me.Id)">@u.Role.Of() — @u.Name</option> }
+        </select>
+        <noscript><button class="btn small">Keç</button></noscript>
+      </form>
+    }
+    @if (C.Unread >= 0 && (role is Role.Investor or Role.Representative or Role.Coordinator or Role.InstitutionOfficer))
+    {
+      <a class="bell" href="/Notifications" title="Bildirişlər">Bildiriş@(C.Unread > 0 ? Html.Raw($" <span class=\"badge\">{C.Unread}</span>") : null)</a>
+    }
+    <a class="who" href="/Profile">@me.Name <small>@me.Role.Of()@(me.InstitutionCode is null ? "" : " · " + me.InstitutionCode)</small></a>
+    <form method="post" asp-page="/Logout" class="inline"><button class="btn small ghost">Çıxış</button></form>
+  }
+</header>
+<div class="shell">
+  <nav class="side" aria-label="Əsas menyu">
+    @foreach (var n in nav)
+    {
+      <a href="@Url.Page(n.Page)" class="@(current.StartsWith(n.Page.TrimEnd('x')) || current == n.Page ? "active" : "")">@n.Text</a>
+    }
+    @if (me is not null)
+    {
+      <a href="/Notifications" class="@(current == "/Notifications" ? "active" : "")">Bildirişlər</a>
+      <a href="/Profile" class="@(current == "/Profile" ? "active" : "")">Profil</a>
+    }
+    <span class="lang" title="EN/RU tezliklə">AZ · EN · RU</span>
+  </nav>
+  <main>
+    <partial name="_Flash" />
+    @RenderBody()
+  </main>
+</div>
+<script src="~/js/app.js"></script>
+</body>
+</html>

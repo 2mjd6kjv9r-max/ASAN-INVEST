@@ -1,0 +1,51 @@
+@page "{id:guid}"
+@model JobModel
+@{ var v = Model.View; ViewData["Title"] = v.Job.Title; var cat = C.P.Catalog; }
+<p><a href="@Url.Page("Jobs")">← İşlər</a></p>
+<div class="card">
+  <h1>@v.Job.Title</h1>
+  <p>@v.Scenario.Title · İrəliləyiş @v.Percent% (@v.CompletedCount/@v.ActiveCount)</p><progress max="100" value="@v.Percent"></progress>
+  @if (Model.Profile is { } p) { <p class="mut">İnvestor: @p.DisplayName · @p.Country · @p.Contact · e-imza: @(p.Esign == EsignStatus.Has ? "var" : p.Esign == EsignStatus.None ? "yoxdur" : "bilinmir")</p> }
+  else { <p class="mut">İnvestor: @C.UserName(v.Job.InvestorUserId)</p> }
+</div>
+<div class="card"><h2>Mərhələlər</h2>
+<table><thead><tr><th>№</th><th>Mərhələ</th><th>Status</th><th>Hazırlıq</th><th>Sorğular</th><th>Müddət</th></tr></thead><tbody>
+@foreach (var s in v.Stages)
+{
+  <tr><td>@s.Number</td><td><a href="@Url.Page("/Stage/Index", new { jobId = v.Job.Id, number = s.Number })">@s.Template.Name</a></td>
+  <td><span class="pill @s.Status.Css()">@s.Status.Of()</span></td>
+  <td>@(s.Applicable && s.Run.ReadyToSend ? Html.Raw("<span class=\"pill warn\">Hazırdır</span>") : null)</td>
+  <td>@foreach (var r in s.Requests) { <div><small>@r.InstitutionCode</small> <span class="pill @r.Status.Css()">@r.Status.Of()</span></div> }</td>
+  <td>@if (s.Deadline is { } d) { <span class="pill @(d.Severity == DeadlineSeverity.Overdue ? "bad" : d.Severity == DeadlineSeverity.Warning ? "warn" : "mute")">@C.DateOnly(d.DueDate)</span> }</td></tr>
+}
+</tbody></table></div>
+<div class="card"><h2>Sənədlər</h2>
+@if (Model.Docs.Count == 0) { <p class="mut">Sənəd yoxdur.</p> }
+@foreach (var d in Model.Docs)
+{
+  <div class="card">
+    <div class="row between"><span><b>@d.FileName</b> · @d.Type · mərhələ: @(d.StageNumbers.Count == 0 ? "—" : string.Join(", ", d.StageNumbers)) · <a href="/Doc/@d.Id">Yüklə</a></span>
+      <span class="pill @(d.Review == ReviewStatus.Accepted ? "ok" : d.Review == ReviewStatus.ChangesRequested ? "bad" : "mute")">@d.Review.Of()</span></div>
+    @if (d.Foreign != ForeignDocStatus.NotForeign) { <small>Xarici sənəd (@d.SourceCountry): @d.Foreign.Of()</small> }
+    @if (C.P.Documents.IsExpired(d)) { <span class="pill bad">Müddəti bitib</span> }
+    @if (d.ReviewReason is not null) { <br /><small>Səbəb: @d.ReviewReason</small> }
+    <form method="post" asp-page-handler="Review" class="row">
+      <input type="hidden" name="id" value="@v.Job.Id" /><input type="hidden" name="docId" value="@d.Id" />
+      <input name="reason" placeholder="Düzəliş səbəbi" maxlength="500" />
+      <button class="btn small ok" name="accept" value="true">Qəbul et</button>
+      <button class="btn small danger" name="accept" value="false">Düzəliş tələb et</button>
+    </form>
+    @if (d.Foreign is ForeignDocStatus.Uploaded or ForeignDocStatus.ApostilleConfirmed)
+    {
+      <form method="post" asp-page-handler="Foreign"><input type="hidden" name="id" value="@v.Job.Id" /><input type="hidden" name="docId" value="@d.Id" />
+      <button class="btn small ghost">@(d.Foreign == ForeignDocStatus.Uploaded ? "Apostil təsdiqləndi" : "Tərcümə notarial təsdiqləndi")</button></form>
+    }
+  </div>
+}
+</div>
+<div class="card"><h2>Mesajlar və daxili qeydlər</h2>
+@foreach (var m in Model.Thread) { <div class="msg @(m.Internal ? "internal" : "")"><small><b>@C.UserName(m.AuthorId)</b>@(m.OnBehalfOf is { } ob ? $" ({C.UserName(ob)} adından)" : "") · @C.Local(m.CreatedAt)@(m.Internal ? " · daxili" : "")@(m.StageNumber is null ? "" : " · Mərhələ " + m.StageNumber)</small>@m.Text</div> }
+<form method="post" asp-page-handler="Message"><input type="hidden" name="id" value="@v.Job.Id" />
+  <textarea name="text" maxlength="4000" required aria-label="Mesaj"></textarea>
+  <label class="row"><input type="checkbox" name="isInternal" value="true" /> Daxili qeyd (investora görünmür)</label>
+  <button class="btn">Göndər</button></form></div>

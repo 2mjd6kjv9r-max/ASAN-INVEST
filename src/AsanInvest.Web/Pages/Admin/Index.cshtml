@@ -1,0 +1,18 @@
+@page
+@model IndexModel
+@{ ViewData["Title"] = "Panel"; }
+<h1>Admin paneli</h1>
+<div class="grid g4">
+  <div class="card stat">@Model.ActiveJobs<small>Aktiv iş (cəmi @Model.Jobs)</small></div>
+  <div class="card stat">@Model.OpenRequests<small>Açıq sorğu</small></div>
+  <div class="card stat">@Model.LateRequests<small>Norma aşan sorğu</small></div>
+  <div class="card stat">@Model.OverdueDeadlines<small>Qanuni müddəti gecikən iş</small></div>
+</div>
+<div class="grid g2">
+  <div class="card"><h2>Ssenari üzrə işlər</h2>
+    @foreach (var kv in Model.ByScenario) { <div class="row between"><span>@kv.Key</span><b>@kv.Value</b></div> }
+    @if (Model.ByScenario.Count == 0) { <p class="mut">İş yoxdur.</p> }</div>
+  <div class="card"><h2>Qurumlar üzrə sorğular</h2>
+    @foreach (var kv in Model.ByInst.OrderByDescending(k => k.Value.Total)) { <div class="row between"><span>@C.P.Catalog.InstName(kv.Key)</span><span>@kv.Value.Total @(kv.Value.Late > 0 ? Html.Raw($"<span class=\"pill bad\">{kv.Value.Late} gecikir</span>") : null)</span></div> }
+    @if (Model.ByInst.Count == 0) { <p class="mut">Sorğu yoxdur.</p> }</div>
+</div>

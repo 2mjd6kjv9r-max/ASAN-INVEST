@@ -1,0 +1,40 @@
+@page
+@model ProfileModel
+@{ ViewData["Title"] = "Profil"; var me = C.Me; }
+<h1>Profil</h1>
+<div class="card"><p><b>@me.Name</b><br />@me.Email · @me.Role.Of()@(me.InstitutionCode is null ? "" : " · " + C.P.Catalog.InstName(me.InstitutionCode))</p>
+<p class="mut">Dil: Azərbaycan (EN / RU tezliklə).</p></div>
+@if (me.Role == Role.Investor)
+{
+  <div class="card"><h2>Rekvizitlər</h2>
+    <form method="post" asp-page-handler="Save">
+      <div class="field"><label for="contact">Əlaqə</label><input id="contact" name="contact" value="@Model.Profile?.Contact" maxlength="200" /></div>
+      <div class="field"><label for="authorized">Səlahiyyətli şəxs</label><input id="authorized" name="authorized" value="@Model.Profile?.AuthorizedPerson" maxlength="200" /></div>
+      <div class="field"><label for="beneficial">Faktiki mənfəət sahibi</label><input id="beneficial" name="beneficial" value="@Model.Profile?.BeneficialOwner" maxlength="200" /></div>
+      <div class="field"><label for="esign">Elektron imza</label><select id="esign" name="esign">
+        <option value="Unknown" selected="@(Model.Profile?.Esign == EsignStatus.Unknown)">Bilmirəm</option>
+        <option value="Has" selected="@(Model.Profile?.Esign == EsignStatus.Has)">Var</option>
+        <option value="None" selected="@(Model.Profile?.Esign == EsignStatus.None)">Yoxdur</option></select></div>
+      <button class="btn">Saxla</button>
+    </form></div>
+  <div class="card"><h2>Nümayəndələr</h2>
+    @if (Model.Reps.Count == 0) { <p class="mut">Nümayəndə təyin edilməyib.</p> }
+    @foreach (var (r, u) in Model.Reps)
+    {
+      <div class="row between"><span>@(u?.Name ?? "—") · @r.Basis · @C.DateOnly(r.ValidUntil)-dək @(r.ValidUntil.Date < C.P.Clock.Today ? Html.Raw("<span class=\"pill bad\">müddəti bitib</span>") : null)</span>
+      <form method="post" asp-page-handler="RemoveRep"><input type="hidden" name="id" value="@r.Id" /><button class="btn small danger" data-confirm="Təmsilçilik ləğv edilsin?">Ləğv et</button></form></div>
+    }
+    <hr /><h3>Nümayəndə əlavə et</h3>
+    <form method="post" asp-page-handler="AddRep">
+      <div class="field"><label for="email">Nümayəndənin e-poçtu</label><input id="email" type="email" name="email" required maxlength="200" /></div>
+      <div class="field"><label for="basis">Əsas</label><input id="basis" name="basis" value="e-Təmsilçi" maxlength="100" /></div>
+      <div class="field"><label for="vu">Qüvvədə olma tarixi</label><input id="vu" type="date" name="validUntil" required /></div>
+      <button class="btn">Əlavə et</button>
+    </form></div>
+}
+@if (me.Role == Role.Representative)
+{
+  <div class="card"><h2>Təmsil etdiyim investorlar</h2>
+  @foreach (var (r, u) in Model.Acting) { <p>@(u?.Name ?? "—") · @r.Basis · @C.DateOnly(r.ValidUntil)-dək @(r.ValidUntil.Date < C.P.Clock.Today ? "(müddəti bitib — yalnız baxış)" : "")</p> }
+  </div>
+}

@@ -1,0 +1,16 @@
+@page
+@model RequestsModel
+@{ ViewData["Title"] = "Sorğular"; }
+<div class="row between"><h1>Qurumlara sorğular</h1>
+<form method="get"><select name="status" data-autosubmit aria-label="Status"><option value="">Hamısı</option>
+ @foreach (var s in Enum.GetValues<RequestStatus>().Where(s => s != RequestStatus.Draft)) { <option value="@s" selected="@(Model.Status == s.ToString())">@s.Of()</option> }</select></form></div>
+<div class="card"><table><thead><tr><th>№</th><th>İş</th><th>Qurum</th><th>Mərhələ</th><th>Status</th><th>Göndərilib</th><th>Gecikmə</th></tr></thead><tbody>
+@foreach (var (r, j) in Model.Items)
+{
+  <tr><td>@r.Number</td><td><a href="@Url.Page("Job", new { id = j.Id })">@j.Title</a></td><td>@C.P.Catalog.InstName(r.InstitutionCode)</td>
+  <td><a href="@Url.Page("/Stage/Index", new { jobId = j.Id, number = r.StageNumber, tab = "institutions" })">@r.StageNumber</a></td>
+  <td><span class="pill @r.Status.Css()">@r.Status.Of()</span></td><td>@C.Local(r.SentAt)</td>
+  <td>@if (C.P.Requests.IsLate(r)) { <span class="pill bad">Norma aşılıb</span> }</td></tr>
+}
+</tbody></table>
+@if (Model.Items.Count == 0) { <p class="empty">Sorğu yoxdur.</p> }</div>

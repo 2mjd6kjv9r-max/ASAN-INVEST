@@ -1,0 +1,8 @@
+@page
+@model SettingsModel
+@{ ViewData["Title"] = "Parametrlər"; }
+<h1>Parametrlər</h1>
+<div class="card"><form method="post">
+ <div class="field"><label for="m">Maksimum fayl ölçüsü (MB)</label><input id="m" type="number" name="maxMb" value="@Model.MaxMb" min="1" max="10" /></div>
+ <div class="field"><label for="d">Qurum üçün cavab norması (gün)</label><input id="d" type="number" name="normDays" value="@Model.NormDays" min="1" max="60" /></div>
+ <button class="btn">Saxla</button></form></div>

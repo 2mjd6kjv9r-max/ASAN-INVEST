@@ -1,0 +1,68 @@
+@page
+@model OnboardingModel
+@{ ViewData["Title"] = "Layihəni başlat"; }
+@if (Model.Created is { } j)
+{
+  var sc = ScenarioResolver.Resolve(j.Answers);
+  <div class="card">
+    <h1>Yol xəritəniz hazırdır</h1>
+    <p>Ssenari: <b>@sc.Title</b> <small>(@sc.Code)</small></p>
+    <p>Sizə koordinator təyin edilib: <b>@(j.CoordinatorId is { } cid ? C.UserName(cid) : "hələ təyin edilməyib")</b></p>
+    @foreach (var r in Model.Recs) { <div class="note"><b>@(r.Warning ? "⚠ " : "")@r.Title.</b> @r.Text</div> }
+    <p><a class="btn" href="/Investor/Home">Əsas səhifəyə keç</a> <a class="btn ghost" href="/Investor/Roadmap">Yol xəritəsinə bax</a></p>
+  </div>
+}
+else
+{
+  <h1>@(Model.Change ? "Ssenarini dəyiş" : "Layihəni başlat")</h1>
+  @if (Model.Change) { <div class="note">Cavabları dəyişsəniz yeni yol xəritəsi yaranır; eyni mərhələlərdəki tamamlanmış tapşırıqlar köçürülür, göndərilmiş sorğular köhnə işdə qalır.</div> }
+  <form method="post" asp-page-handler="@(Model.Change ? "Change" : "Create")">
+    @if (Model.Principals.Count > 0 || C.Me.Role == Role.Representative)
+    {
+      <div class="card"><h2>Kimin adından?</h2>
+        @if (Model.Principals.Count == 0) { <p class="mut">Qüvvədə olan təmsilçilik yoxdur.</p> }
+        <select name="InvestorId" required>@foreach (var u in Model.Principals) { <option value="@u.Id">@u.Name</option> }</select></div>
+    }
+    <div class="card"><h2>1. İnvestor kimdir?</h2>
+      <div class="choice">
+        <label><input type="radio" name="Kind" value="Legal" checked="@(Model.Kind == InvestorKind.Legal)" /> Hüquqi şəxs</label>
+        <label><input type="radio" name="Kind" value="Natural" checked="@(Model.Kind == InvestorKind.Natural)" /> Fiziki şəxs</label>
+      </div></div>
+    <div class="card"><h2>2. Rezidentlik</h2>
+      <div class="choice">
+        <label><input type="radio" name="Res" value="Resident" checked="@(Model.Res == Residency.Resident)" /> Rezident (hüquqi şəxs) / Azərbaycan vətəndaşı</label>
+        <label><input type="radio" name="Res" value="NonResident" checked="@(Model.Res == Residency.NonResident)" /> Qeyri-rezident (hüquqi şəxs) / Əcnəbi</label>
+      </div></div>
+    <div class="card"><h2>3. Layihə</h2>
+      <div class="choice">
+        <label><input type="radio" name="Project" value="New" checked="@(Model.Project == ProjectKind.New)" /> Sıfırdan yeni MMC / layihə qurmaq</label>
+        <label><input type="radio" name="Project" value="Existing" checked="@(Model.Project == ProjectKind.Existing)" /> Mövcud şirkətə investisiya</label>
+      </div>
+      <h3>Mövcud şirkətə necə daxil olursunuz? <small>(yalnız «mövcud» seçildikdə)</small></h3>
+      <div class="choice">
+        <label><input type="radio" name="Path" value="Share" checked="@(Model.Path != EntryPath.Capital)" /> Pay alıram</label>
+        <label><input type="radio" name="Path" value="Capital" checked="@(Model.Path == EntryPath.Capital)" /> Kapital artımı ilə daxil oluram</label>
+      </div></div>
+    <div class="card"><h2>4. Dəqiqləşdirici suallar <small>(«Bilmirəm» seçə bilərsiniz — sonradan mərhələdə cavablanır)</small></h2>
+      @{
+        (string Name, string Text, string? Val)[] qs = {
+          ("Construction", "Tikinti işləri nəzərdə tutulur?", Model.Construction),
+          ("ForeignWorker", "Xarici işçi cəlb ediləcək?", Model.ForeignWorker),
+          ("Incentive", "İnvestisiya təşviqi sənədi alınacaq?", Model.Incentive),
+          ("Land", "Torpaq / sənaye sahəsi lazımdır?", Model.Land),
+          ("Permit", "İnvestorun Azərbaycanda yaşamaq icazəsi var?", Model.Permit),
+          ("Esign", "Elektron imzanız (ASAN İmza / SİMA) var?", Model.Esign) };
+      }
+      @foreach (var q in qs)
+      {
+        <div class="field"><label for="@q.Name">@q.Text</label>
+          <select id="@q.Name" name="@q.Name">
+            <option value="" selected="@(string.IsNullOrEmpty(q.Val))">Bilmirəm</option>
+            <option value="yes" selected="@(q.Val == "yes")">Bəli</option>
+            <option value="no" selected="@(q.Val == "no")">Xeyr</option>
+          </select></div>
+      }
+    </div>
+    <button class="btn">@(Model.Change ? "Ssenarini dəyiş" : "Yol xəritəmi göstər")</button>
+  </form>
+}

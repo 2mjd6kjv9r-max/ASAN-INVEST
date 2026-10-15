@@ -1,0 +1,30 @@
+@page
+@model LoginModel
+@{ Layout = "_LayoutPlain"; ViewData["Title"] = "Giriş"; }
+<div class="login">
+  <div class="card">
+    <h1>ASAN <span class="mut">İnvest</span></h1>
+    <p class="mut">İnvestisiya layihələri üçün vahid pəncərə.</p>
+    <partial name="_Flash" />
+    @if (Model.DemoEnabled)
+    {
+      <div class="note"><b>Demo rejim.</b> Real ASAN Login / ASAN İmza inteqrasiyası hələ qoşulmayıb; istifadəçini seçib daxil olun. Bütün məlumatlar uydurmadır.</div>
+      <form method="post" asp-page-handler="Demo">
+        <label for="userId">İstifadəçi</label>
+        <select id="userId" name="userId" required>
+          @foreach (var g in Model.DemoUsers.GroupBy(u => u.Role))
+          {
+            <optgroup label="@g.Key.Of()">
+              @foreach (var u in g) { <option value="@u.Id">@u.Name — @u.Email</option> }
+            </optgroup>
+          }
+        </select>
+        <p><button class="btn">Daxil ol</button></p>
+      </form>
+    }
+    else
+    {
+      <div class="note">Giriş ASAN Login vasitəsilə həyata keçiriləcək. Bu quruluşda inteqrasiya hələ qoşulmayıb; demo giriş söndürülüb.</div>
+    }
+  </div>
+</div>
